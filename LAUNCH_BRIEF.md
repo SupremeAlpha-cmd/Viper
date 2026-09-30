@@ -6,7 +6,7 @@ Bobby, here's everything from my side for the token. The rest is fully yours.
 - **Name:** Viper
 - **Ticker:** VIPER
 - **Description:** VIPER is the game coin of Viper — a fully on-chain bomber arena on Robinhood Chain.
-- **Logo:** https://viper-bite.vercel.app/logo.png
+- **Logo:** https://viper-blast.xyz/logo.png
 - **Creator tax:** 2%
 - **Pool wallet (creator fees, provided by you):** 0x8d6dd76ad4ad8370474739916a7a78d1d6384c8e
 

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ArenaMotif } from "../../components/ArenaMotif";
 
 /*
  * VIPER LANDING PAGE — designer working file.
@@ -58,46 +59,54 @@ export default function LandingPage() {
   return (
     <div className="pt-6">
       {/* ============ HERO ============ */}
-      {/* DESIGNERS: hero art zone — game key art / arena render goes here.
-          Keep the headline and CTAs; art is yours. */}
-      <section data-section="hero" className="py-16 text-center sm:py-24">
-        <div className="mx-auto mb-6 flex justify-center">
-          <Image
-            src="/logo.png"
-            alt="Viper"
-            width={88}
-            height={88}
-            className="rounded-2xl"
-            priority
-          />
+      {/* DESIGNERS: hero art zone — the ArenaMotif is a placeholder for key
+          art. Keep the headline and CTAs; art is yours. */}
+      <section
+        data-section="hero"
+        className="grid items-center gap-10 py-14 sm:grid-cols-2 sm:py-20"
+      >
+        <div className="text-center sm:text-left">
+          <div className="flex items-center justify-center gap-3 sm:justify-start">
+            <Image
+              src="/logo.png"
+              alt="Viper"
+              width={52}
+              height={52}
+              className="rounded-xl"
+              priority
+            />
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-lime-400">
+              Fully on-chain
+              <br />
+              Robinhood Chain
+            </p>
+          </div>
+          <h1 className="mt-6 font-display text-5xl font-bold leading-[1.05] text-white sm:text-6xl">
+            Drop in. Blow up.
+            <br />
+            Take the pot.
+          </h1>
+          <p className="mx-auto mt-5 max-w-md text-base text-zinc-400 sm:mx-0 sm:text-lg">
+            Viper is a real-time multiplayer bomber arena where every step
+            and explosion is a blockchain transaction. Last one standing
+            takes it all.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-start justify-center items-center">
+            <Link
+              href="/"
+              className="rounded-xl bg-lime-400 px-8 py-3.5 font-semibold text-black transition hover:bg-lime-300"
+            >
+              Enter the arena
+            </Link>
+            <a
+              href="#how-it-works"
+              className="rounded-xl border border-white/20 px-8 py-3.5 font-semibold text-white transition hover:border-white/40"
+            >
+              How it works
+            </a>
+          </div>
         </div>
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-lime-400">
-          Fully on-chain · Robinhood Chain
-        </p>
-        <h1 className="mx-auto mt-4 max-w-3xl font-display text-5xl font-bold leading-tight text-white sm:text-7xl">
-          Drop in. Blow up.
-          <br />
-          Take the pot.
-        </h1>
-        <p className="mx-auto mt-6 max-w-xl text-base text-zinc-400 sm:text-lg">
-          Viper is a real-time multiplayer bomber arena where every step and
-          explosion is a blockchain transaction. Last one standing takes it
-          all.
-        </p>
-        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Link
-            href="/"
-            className="rounded-xl bg-lime-400 px-8 py-3.5 font-semibold text-black transition hover:bg-lime-300"
-          >
-            Enter the arena
-          </Link>
-          <a
-            href="#how-it-works"
-            className="rounded-xl border border-white/20 px-8 py-3.5 font-semibold text-white transition hover:border-white/40"
-          >
-            How it works
-          </a>
-        </div>
+        <ArenaMotif />
       </section>
 
       {/* ============ STATS ============ */}

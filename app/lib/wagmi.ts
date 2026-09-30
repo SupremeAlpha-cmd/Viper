@@ -1,11 +1,11 @@
 import { http, createConfig, injected } from "wagmi";
-import { robinhoodChain } from "./chain";
+import { activeChain, localTestChain, robinhoodChain } from "./chain";
 
 /** Injected connector only — no WalletConnect cloud dependency. */
 export const config = createConfig({
-  chains: [robinhoodChain],
+  chains: [activeChain],
   connectors: [injected()],
-  transports: { [robinhoodChain.id]: http() },
+  transports: { [robinhoodChain.id]: http(), [localTestChain.id]: http() },
   ssr: true,
 });
 

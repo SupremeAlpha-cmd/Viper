@@ -45,8 +45,8 @@ contract DeployLocal is Script {
             address(token),
             10 ether,
             msg.sender,
-            5,    // fuse: 5 blocks
-            100   // max match: 100 blocks
+            30,   // fuse: 30 blocks (~2.4s at ~0.08s/block mainnet)
+            3000  // max match: 3000 blocks (~4min at ~0.08s/block mainnet)
         );
         // Fund the two default anvil accounts
         token.mint(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266, 1000 ether);

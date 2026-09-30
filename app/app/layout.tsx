@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { Space_Grotesk, Inter } from "next/font/google";
 import { Providers } from "../components/Providers";
 import { ConnectButton } from "../components/ConnectButton";
@@ -8,23 +9,29 @@ const display = Space_Grotesk({ subsets: ["latin"], variable: "--font-display" }
 const body = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://viper-bite.vercel.app"),
   title: "Viper — on-chain bomber arena",
   description:
     "Real-time multiplayer bomber arena on Robinhood Chain. Every move, bomb and explosion is an on-chain transaction.",
+  icons: { icon: "/logo.png" },
+  openGraph: {
+    title: "Viper — on-chain bomber arena",
+    description:
+      "Real-time multiplayer bomber arena on Robinhood Chain. Last one standing takes the pot.",
+    images: ["/opengraph-image.png"],
+  },
 };
 
 function ViperMark() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3 4 L12 21 L21 4"
-        stroke="#a3e635"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M12 21 L12 14" stroke="#a3e635" strokeWidth="3" strokeLinecap="round" />
-    </svg>
+    <Image
+      src="/logo.png"
+      alt="Viper"
+      width={34}
+      height={34}
+      className="rounded-lg"
+      priority
+    />
   );
 }
 

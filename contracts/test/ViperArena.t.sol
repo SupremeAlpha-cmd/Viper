@@ -39,8 +39,8 @@ contract ViperArenaTest is Test {
     address constant B = address(0xB);
     address constant TREASURY = address(0x77);
     uint256 constant ENTRY = 100;
-    uint256 constant FUSE = 5;
-    uint256 constant MAX_BLOCKS = 100;
+    uint256 constant FUSE = 30;
+    uint256 constant MAX_BLOCKS = 3000;
 
     function setUp() public {
         token = new MockUSDG();

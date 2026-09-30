@@ -68,6 +68,34 @@ forge script script/DeployLocal.s.sol:DeployLocal \
 # then: node ../app/scripts/e2e-anvil.mjs <arena> <token>
 ```
 
+### Browser playtest (local chain)
+
+```bash
+# terminal 1 — test chain
+anvil --port 8545
+
+# terminal 2 — deploy game contracts (note the ViperArena address)
+cd contracts
+forge script script/DeployLocal.s.sol:DeployLocal \
+  --rpc-url http://127.0.0.1:8545 --broadcast --unlocked \
+  --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+
+# terminal 3 — website in local-test mode
+cd app && npm install
+NEXT_PUBLIC_LOCAL_TEST=1 NEXT_PUBLIC_VIPER_ARENA=<arena> npm run dev
+# open http://localhost:3000
+```
+
+Wallet setup (MetaMask/Rabby): add network "Anvil Local",
+RPC `http://127.0.0.1:8545`, chain ID `31337`. Import two test accounts
+(public anvil keys, no real funds):
+
+- `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7b4a3ff3`
+- `0x59c6995e998f97a5a0044966f0945389dc6935d4b7a`
+
+Play: normal window + incognito window, one account each, both approve +
+join, wait out the 60s lobby, start, move with arrows/WASD, Space to plant.
+
 ## Design decisions (locked 2026-09-30)
 
 - Timed 60s lobbies, winner-takes-all, chaos tuning (short fuse, big blast)

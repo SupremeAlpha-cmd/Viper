@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: radial-gradient(1200px 600px at 50% -10%, rgba(163, 230, 53, 0.05), transparent),
+    #070907;
+}
+
+/* Explosion flash: quick lime burst that fades out */
+@keyframes viper-flash {
+  0% {
+    opacity: 0.9;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.viper-flash {
+  animation: viper-flash 0.7s ease-out forwards;
+  pointer-events: none;
+}

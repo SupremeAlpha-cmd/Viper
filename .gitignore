@@ -1,4 +1,8 @@
 contracts/out/
 contracts/cache/
 contracts/lib/
+contracts/broadcast/
+app/node_modules/
+app/.next/
+app/.env.local
 .DS_Store

@@ -343,6 +343,32 @@ contract ViperArena {
 
     function getBombs() external view returns (Bomb[] memory) { return bombs; }
 
+    /// @notice Whole match state in one call, so the client polls with a
+    /// single eth_call instead of one per player (no multicall3 on this chain).
+    function getMatchState()
+        external
+        view
+        returns (
+            address[] memory addrs,
+            uint8[] memory xs,
+            uint8[] memory ys,
+            bool[] memory alives
+        )
+    {
+        uint256 n = players.length;
+        addrs = new address[](n);
+        xs = new uint8[](n);
+        ys = new uint8[](n);
+        alives = new bool[](n);
+        for (uint256 i = 0; i < n; i++) {
+            address p = players[i];
+            addrs[i] = p;
+            xs[i] = px[p];
+            ys[i] = py[p];
+            alives[i] = alive[p];
+        }
+    }
+
     function lobbyOpen() external view returns (bool) {
         return phase == Phase.Lobby && block.timestamp < lobbyEndsAt;
     }

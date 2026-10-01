@@ -30,17 +30,6 @@ function Kicker({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Badge({ children, color }: { children: React.ReactNode; color: string }) {
-  return (
-    <span
-      className={`${pixel.className} inline-block rounded-full border-[3px] px-4 py-1 text-[9px]`}
-      style={{ borderColor: NAVY, background: color, color: NAVY }}
-    >
-      {children}
-    </span>
-  );
-}
-
 /* ---------- mini snake snapshot ---------- */
 function MiniSnake() {
   const path: [number, number][] = [
@@ -279,23 +268,17 @@ export default function LandingPage() {
       <section id="games" className="mx-auto max-w-5xl px-4 py-12">
         <Kicker>The lineup</Kicker>
 
-        {/* featured: snake */}
-        <Card className="mb-6 flex flex-col gap-6 md:flex-row md:items-center">
-          <div className="w-full md:w-1/2">
-            <MiniSnake />
-          </div>
-          <div className="w-full md:w-1/2">
-            <Badge color="#fbbf24">FLAGSHIP</Badge>
-            <p className={`${pixel.className} my-4 text-xl`}>SNAKE</p>
-            <p className="text-sm font-medium leading-relaxed opacity-80">
-              A slither-style multiplayer arena. Eat coins, grow long, clip your rivals —
-              last one slithering takes the pot. Sign once, then play in real time.
-              No wallet popups mid-game.
-            </p>
-          </div>
-        </Card>
-
         <div className="grid gap-6 md:grid-cols-3">
+          {/* snake */}
+          <Card>
+            <p className={`${pixel.className} mb-3 text-center text-xs`}>SNAKE</p>
+            <MiniSnake />
+            <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
+              A slither-style multiplayer arena. Eat coins, grow long, clip your rivals —
+              last one slithering takes the pot.
+            </p>
+          </Card>
+
           {/* bomber arena */}
           <Card>
             <p className={`${pixel.className} mb-3 text-center text-xs`}>BOMBER ARENA</p>

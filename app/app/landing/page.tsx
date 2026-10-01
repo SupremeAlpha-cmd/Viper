@@ -201,12 +201,14 @@ const UPCOMING = [
     tileBg: "#fef3c7",
     title: "SNAKES & LADDERS",
     desc: "Four team colors, one board. Race to square 100 — the winning team takes the pot.",
+    href: "/snakes-ladders",
   },
   {
     glyph: "🎲",
     tileBg: "#fce7f3",
     title: "DOUBLE OR NOTHING",
     desc: "Pure chance. Stake your VIPER, call it — double up or lose it all.",
+    href: "/double-or-nothing",
   },
   {
     glyph: "🦑",
@@ -290,36 +292,32 @@ export default function LandingPage() {
           </Card>
 
           {/* upcoming games */}
-          {UPCOMING.map((g) => {
-            const isDon = g.title === "DOUBLE OR NOTHING";
-            const content = (
-              <>
-                <p className={`${pixel.className} mb-3 text-center text-xs`}>{g.title}</p>
+          {UPCOMING.map((g) => (
+            <Card key={g.title}>
+              <p className={`${pixel.className} mb-3 text-center text-xs`}>{g.title}</p>
+              {g.href ? (
+                <Link href={g.href}>
+                  <GlyphTile glyph={g.glyph} bg={g.tileBg} />
+                </Link>
+              ) : (
                 <GlyphTile glyph={g.glyph} bg={g.tileBg} />
-                <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
-                  {g.desc}
-                </p>
-                {isDon && (
-                  <div className="mt-3 text-center">
-                    <span
-                      className={`${pixel.className} inline-block rounded-xl border-2 px-3 py-1 text-[9px]`}
-                      style={{ borderColor: NAVY, background: "#fbbf24", color: NAVY }}
-                    >
-                      ▶ PLAY NOW
-                    </span>
-                  </div>
-                )}
-              </>
-            );
-
-            return isDon ? (
-              <Link key={g.title} href="/double-or-nothing" className="block transition hover:scale-[1.02]">
-                <Card>{content}</Card>
-              </Link>
-            ) : (
-              <Card key={g.title}>{content}</Card>
-            );
-          })}
+              )}
+              <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
+                {g.desc}
+              </p>
+              {g.href && (
+                <div className="mt-3 text-center">
+                  <Link
+                    href={g.href}
+                    className={`${pixel.className} inline-block rounded-xl border-2 px-3 py-1.5 text-[9px] text-white transition hover:opacity-90`}
+                    style={{ borderColor: NAVY, background: NAVY }}
+                  >
+                    ▶ PLAY NOW
+                  </Link>
+                </div>
+              )}
+            </Card>
+          ))}
         </div>
       </section>
 

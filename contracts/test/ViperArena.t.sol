@@ -92,6 +92,20 @@ contract ViperArenaTest is Test {
         assertEq(arena.px(A), 1);
     }
 
+    function test_DeadCallerMoveSettlesInsteadOfReverting() public {
+        _joinTwoAndStart();
+        // A plants at spawn (0,0) and stays; B is safe at (10,0).
+        vm.prank(A); arena.plantBomb();
+        vm.roll(block.number + FUSE + 1);
+        // A's bomb detonates inside move(), killing A. The call must NOT
+        // revert (SEC-01): the death stands and B, sole survivor, wins.
+        vm.prank(A); arena.move(1, 0);
+        assertEq(uint8(arena.phase()), uint8(ViperArena.Phase.Lobby));
+        assertEq(token.balanceOf(TREASURY), 10);
+        assertEq(token.balanceOf(B), 1000 - ENTRY + 190);
+        assertEq(token.balanceOf(A), 1000 - ENTRY);
+    }
+
     function test_BombKillsAndWinnerTakesPot() public {
         _joinTwoAndStart();
         // A plants a bomb on (0,0) and stays: dies in own blast.
@@ -170,5 +184,29 @@ contract ViperArenaTest is Test {
         vm.prank(A); arena.plantBomb();
         vm.prank(A); arena.move(int8(1), int8(0));
         vm.prank(A); vm.expectRevert("already armed"); arena.plantBomb();
+    }
+
+    // SEC-02: a lobby left idle past expiry must not trap the next joiner
+    // in an instant startMatch -> cancel. The first join restarts the 60s
+    // countdown, so startMatch can't fire until a real lobby has run.
+    function test_FirstJoinRestartsStaleLobby() public {
+        vm.warp(block.timestamp + 3600); // lobby sits idle, long expired
+        vm.prank(A); arena.join(); // first join re-opens the 60s window
+        vm.expectRevert("lobby still open");
+        arena.startMatch(); // must NOT be instantly startable/cancellable
+        vm.prank(B); arena.join();
+        vm.warp(block.timestamp + 61);
+        arena.startMatch();
+        assertEq(uint8(arena.phase()), uint8(ViperArena.Phase.Live));
+    }
+
+    // SEC-02: once the 60s window lapses with players waiting, the lobby
+    // is locked for joining — late joiners are rejected instead of walking
+    // into a match that's already past its start line.
+    function test_CannotJoinExpiredLobby() public {
+        vm.prank(A); arena.join(); // countdown starts
+        vm.warp(block.timestamp + 61); // window lapses
+        vm.expectRevert("lobby closed");
+        vm.prank(B); arena.join();
     }
 }

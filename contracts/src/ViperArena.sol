@@ -109,6 +109,13 @@ contract ViperArena {
         require(phase == Phase.Lobby, "lobby closed");
         require(!joined[msg.sender], "already joined");
         require(players.length < MAX_PLAYERS, "lobby full");
+        if (players.length == 0) {
+            // First joiner (re)starts the 60s countdown, so a lobby left
+            // idle past expiry can't trap anyone in an instant-cancel (SEC-02).
+            lobbyEndsAt = block.timestamp + LOBBY_DURATION;
+        } else {
+            require(block.timestamp < lobbyEndsAt, "lobby closed");
+        }
         require(stakeToken.transferFrom(msg.sender, address(this), entryFee), "fee failed");
 
         joined[msg.sender] = true;
@@ -151,7 +158,12 @@ contract ViperArena {
     function move(int8 dx, int8 dy) external nonReentrant {
         require(phase == Phase.Live, "not live");
         _processExplosions();
-        require(alive[msg.sender], "not alive");
+        if (!alive[msg.sender]) {
+            // Eliminated by this block's explosions: finalize the match
+            // instead of reverting, so the death is not rolled back (SEC-01).
+            _settle();
+            return;
+        }
 
         int16 nx = int16(int8(px[msg.sender])) + int16(dx);
         int16 ny = int16(int8(py[msg.sender])) + int16(dy);
@@ -169,7 +181,12 @@ contract ViperArena {
     function plantBomb() external nonReentrant {
         require(phase == Phase.Live, "not live");
         _processExplosions();
-        require(alive[msg.sender], "not alive");
+        if (!alive[msg.sender]) {
+            // Eliminated by this block's explosions: finalize the match
+            // instead of reverting, so the death is not rolled back (SEC-01).
+            _settle();
+            return;
+        }
         require(!_hasLiveBomb(msg.sender), "already armed");
         require(!_liveBombAt(px[msg.sender], py[msg.sender]), "bomb already here");
 

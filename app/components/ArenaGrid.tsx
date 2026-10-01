@@ -39,7 +39,7 @@ export function ArenaGrid({ players, bombs, flashes, blockNumber, self }: Props)
           {flashKey !== undefined && (
             <div
               key={flashKey}
-              className="viper-flash absolute inset-0 rounded-[3px] bg-lime-400/70"
+              className="viper-flash absolute inset-0 rounded-[3px] bg-viper-500/70"
             />
           )}
           {bomb && (
@@ -63,7 +63,7 @@ export function ArenaGrid({ players, bombs, flashes, blockNumber, self }: Props)
                     title={shortAddr(p.address)}
                     className={`h-full max-h-6 w-full max-w-6 rounded-full ring-2 ${
                       isSelf
-                        ? "bg-lime-400 ring-lime-200"
+                        ? "bg-viper-500 ring-viper-200"
                         : "bg-zinc-300 ring-zinc-100"
                     }`}
                   />

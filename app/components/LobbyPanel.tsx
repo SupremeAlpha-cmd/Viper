@@ -54,7 +54,7 @@ export function LobbyPanel(p: Props) {
         <div className="text-right">
           <div
             className={`font-display text-4xl font-bold tabular-nums ${
-              canStart ? "text-lime-400" : "text-white"
+              canStart ? "text-viper-500" : "text-white"
             }`}
           >
             {mm}:{ss}
@@ -73,7 +73,7 @@ export function LobbyPanel(p: Props) {
           <div className="text-xs text-zinc-500">joined</div>
         </div>
         <div className="rounded-xl bg-black/40 p-3">
-          <div className="font-display text-xl font-bold text-lime-400">
+          <div className="font-display text-xl font-bold text-viper-500">
             {formatTokens(p.pot, p.tokenDecimals)}
           </div>
           <div className="text-xs text-zinc-500">pot ({p.tokenSymbol})</div>
@@ -104,7 +104,7 @@ export function LobbyPanel(p: Props) {
           <button
             onClick={p.onJoin}
             disabled={!p.isConnected || p.pending !== null}
-            className="flex-1 rounded-xl bg-lime-400 py-3 font-semibold text-black transition hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-viper-500 py-3 font-semibold text-white transition hover:bg-viper-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {!p.isConnected
               ? "Connect wallet to join"
@@ -113,7 +113,7 @@ export function LobbyPanel(p: Props) {
                 : `Join for ${formatTokens(p.entryFee, p.tokenDecimals)} ${p.tokenSymbol}`}
           </button>
         ) : (
-          <div className="flex-1 rounded-xl border border-lime-400/40 bg-lime-400/10 py-3 text-center font-semibold text-lime-300">
+          <div className="flex-1 rounded-xl border border-viper-500/40 bg-viper-500/10 py-3 text-center font-semibold text-viper-300">
             You're in — good luck
           </div>
         )}

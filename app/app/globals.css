@@ -3,6 +3,13 @@
 @theme {
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Viper brand blue — sampled from the logo striker (#084bbb),
+     scaled up for dark-background legibility. */
+  --color-viper-200: #bcd3ff;
+  --color-viper-300: #8db4ff;
+  --color-viper-400: #4d8dff;
+  --color-viper-500: #2e7cf6;
+  --color-viper-600: #084bbb;
 }
 
 html {
@@ -10,11 +17,11 @@ html {
 }
 
 body {
-  background: radial-gradient(1200px 600px at 50% -10%, rgba(163, 230, 53, 0.05), transparent),
+  background: radial-gradient(1200px 600px at 50% -10%, rgba(46, 124, 246, 0.07), transparent),
     #070907;
 }
 
-/* Explosion flash: quick lime burst that fades out */
+/* Explosion flash: quick blue burst that fades out */
 @keyframes viper-flash {
   0% {
     opacity: 0.9;

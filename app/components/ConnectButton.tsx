@@ -23,7 +23,7 @@ export function ConnectButton() {
     <button
       onClick={() => connectors[0] && connect({ connector: connectors[0] })}
       disabled={isPending}
-      className="rounded-full bg-lime-400 px-5 py-2 text-sm font-semibold text-black transition hover:bg-lime-300 disabled:opacity-50"
+      className="rounded-full bg-viper-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-viper-300 disabled:opacity-50"
     >
       {isPending ? "Connecting…" : "Connect wallet"}
     </button>

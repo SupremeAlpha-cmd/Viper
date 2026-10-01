@@ -31,12 +31,12 @@ function ResultBanner({
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl border border-lime-400/30 bg-[#0c0f0b] p-6 text-center">
+      <div className="w-full max-w-sm rounded-2xl border border-viper-500/30 bg-[#0c0f0b] p-6 text-center">
         <div className="font-display text-2xl font-bold text-white">{title}</div>
         <div className="mt-2 text-sm text-zinc-400">{sub}</div>
         <button
           onClick={onDismiss}
-          className="mt-5 w-full rounded-xl bg-lime-400 py-2.5 font-semibold text-black transition hover:bg-lime-300"
+          className="mt-5 w-full rounded-xl bg-viper-500 py-2.5 font-semibold text-white transition hover:bg-viper-300"
         >
           Next lobby
         </button>
@@ -83,7 +83,7 @@ export function GameScreen() {
           Contract not deployed yet
         </div>
         <p className="mt-2 text-sm text-zinc-400">
-          Set <code className="rounded bg-black/50 px-1.5 py-0.5 font-mono text-xs text-lime-300">NEXT_PUBLIC_VIPER_ARENA</code> to
+          Set <code className="rounded bg-black/50 px-1.5 py-0.5 font-mono text-xs text-viper-300">NEXT_PUBLIC_VIPER_ARENA</code> to
           the deployed ViperArena address and rebuild.
         </p>
       </div>
@@ -127,18 +127,18 @@ export function GameScreen() {
               Match #{v.matchId}
             </span>
             <span className="text-zinc-400">
-              <span className="font-semibold text-lime-400">{v.aliveCount}</span> alive
+              <span className="font-semibold text-viper-500">{v.aliveCount}</span> alive
             </span>
             <span className="text-zinc-400">
               pot{" "}
-              <span className="font-semibold text-lime-400">
+              <span className="font-semibold text-viper-500">
                 {formatTokens(v.pot, v.tokenDecimals)} {v.tokenSymbol}
               </span>
             </span>
             <span className="text-zinc-500">{blocksLeft} blocks left</span>
             <span className="ml-auto">
               {v.myTurnAlive ? (
-                <span className="text-lime-300">● you're in</span>
+                <span className="text-viper-300">● you're in</span>
               ) : v.joined ? (
                 <span className="text-red-400">eliminated — spectating</span>
               ) : (
@@ -177,7 +177,7 @@ export function GameScreen() {
               <button
                 onClick={() => v.plantBomb().catch(() => {})}
                 disabled={!!v.pending}
-                className="h-20 w-20 rounded-full bg-amber-400 font-display text-sm font-bold text-black shadow-lg transition hover:bg-amber-300 active:scale-95 disabled:opacity-40"
+                className="h-20 w-20 rounded-full bg-amber-400 font-display text-sm font-bold text-white shadow-lg transition hover:bg-amber-300 active:scale-95 disabled:opacity-40"
               >
                 {v.pending === "bomb" ? "…" : "BOMB"}
               </button>
@@ -186,7 +186,7 @@ export function GameScreen() {
           {v.myTurnAlive && (
             <p className="mt-3 text-center text-xs text-zinc-600">
               Arrows / WASD to move · Space to plant · every action is an on-chain transaction
-              {v.pending && <span className="text-lime-400"> · confirming…</span>}
+              {v.pending && <span className="text-viper-500"> · confirming…</span>}
             </p>
           )}
         </div>
@@ -214,7 +214,7 @@ function CtrlBtn({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-lg text-white transition hover:border-lime-400/50 hover:bg-white/10 active:scale-95 disabled:opacity-40"
+      className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-lg text-white transition hover:border-viper-500/50 hover:bg-white/10 active:scale-95 disabled:opacity-40"
     >
       {label}
     </button>

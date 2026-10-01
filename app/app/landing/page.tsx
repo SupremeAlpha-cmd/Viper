@@ -75,7 +75,7 @@ export default function LandingPage() {
               className="rounded-xl"
               priority
             />
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-lime-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-viper-500">
               Fully on-chain
               <br />
               Robinhood Chain
@@ -94,7 +94,7 @@ export default function LandingPage() {
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-start justify-center items-center">
             <Link
               href="/"
-              className="rounded-xl bg-lime-400 px-8 py-3.5 font-semibold text-black transition hover:bg-lime-300"
+              className="rounded-xl bg-viper-500 px-8 py-3.5 font-semibold text-white transition hover:bg-viper-300"
             >
               Enter the arena
             </Link>
@@ -143,7 +143,7 @@ export default function LandingPage() {
               key={s.n}
               className="rounded-2xl border border-white/10 bg-white/[0.03] p-6"
             >
-              <div className="font-display text-sm font-bold tracking-widest text-lime-400">
+              <div className="font-display text-sm font-bold tracking-widest text-viper-500">
                 {s.n}
               </div>
               <h3 className="mt-2 font-display text-xl font-bold text-white">
@@ -183,7 +183,7 @@ export default function LandingPage() {
       {/* ============ THE COIN ============ */}
       {/* DESIGNERS: token spotlight — coin render / chart placeholder. */}
       <section data-section="coin" className="py-16 text-center sm:py-20">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-lime-400">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-viper-500">
           The game coin
         </p>
         <h2 className="mt-4 font-display text-4xl font-bold text-white sm:text-5xl">
@@ -199,7 +199,7 @@ export default function LandingPage() {
       {/* DESIGNERS: closing banner — loudest visual moment on the page. */}
       <section
         data-section="final-cta"
-        className="rounded-3xl border border-lime-400/20 bg-lime-400/[0.06] px-6 py-14 text-center"
+        className="rounded-3xl border border-viper-500/20 bg-viper-500/[0.06] px-6 py-14 text-center"
       >
         <h2 className="mx-auto max-w-2xl font-display text-3xl font-bold text-white sm:text-4xl">
           The next lobby is forming. Be in it.
@@ -209,7 +209,7 @@ export default function LandingPage() {
         </p>
         <Link
           href="/"
-          className="mt-8 inline-block rounded-xl bg-lime-400 px-10 py-4 font-semibold text-black transition hover:bg-lime-300"
+          className="mt-8 inline-block rounded-xl bg-viper-500 px-10 py-4 font-semibold text-white transition hover:bg-viper-300"
         >
           Play now
         </Link>

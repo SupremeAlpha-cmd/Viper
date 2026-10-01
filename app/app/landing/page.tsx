@@ -115,37 +115,87 @@ function GlyphTile({ glyph, bg }: { glyph: string; bg: string }) {
 }
 
 /* ---------- SNES-cartridge frame ---------- */
-function Cartridge({ children }: { children: React.ReactNode }) {
+/* ---------- arcade cabinet (hero) ---------- */
+function ArcadeCabinet() {
+  const tiles = ["🐍", "💣", "♞", "🪜", "🎲", "🦑"];
   return (
     <div
-      className="relative mx-auto w-full max-w-2xl rounded-[28px] border-[3px] p-5 pt-8"
-      style={{ borderColor: NAVY, background: "#aab4c4", boxShadow: `10px 10px 0 ${NAVY}` }}
+      className="mx-auto w-60"
+      style={{ filter: `drop-shadow(8px 8px 0 ${NAVY})` }}
     >
-      {/* vent slots */}
+      {/* marquee */}
       <div
-        className="mx-auto mb-4 h-4 w-2/3 rounded-full opacity-60"
-        style={{
-          background: `repeating-linear-gradient(90deg, ${NAVY} 0 10px, transparent 10px 22px)`,
-        }}
-      />
-      {/* screws */}
-      {["left-4 top-4", "right-4 top-4", "bottom-4 left-4", "bottom-4 right-4"].map((pos) => (
-        <div
-          key={pos}
-          className={`absolute ${pos} h-4 w-4 rounded-full border-2`}
-          style={{ borderColor: NAVY, background: "#7c8698" }}
-        />
-      ))}
+        className="rounded-t-2xl border-[3px] border-b-0 px-4 py-3 text-center"
+        style={{ borderColor: NAVY, background: "#fbbf24" }}
+      >
+        <p className={`${pixel.className} text-[10px]`} style={{ color: NAVY }}>
+          ★ VIPER ★
+        </p>
+      </div>
       {/* screen */}
       <div
-        className="overflow-hidden rounded-2xl border-[3px]"
-        style={{ borderColor: NAVY, background: "#070b22" }}
+        className="border-[3px] border-y-0 px-4 py-3"
+        style={{ borderColor: NAVY, background: "#aab4c4" }}
       >
-        {children}
+        <div
+          className="rounded-lg border-[3px] p-2"
+          style={{ borderColor: NAVY, background: "#070b22" }}
+        >
+          <div className="grid grid-cols-3 gap-1.5">
+            {tiles.map((t) => (
+              <div
+                key={t}
+                className="flex aspect-square items-center justify-center rounded text-lg"
+                style={{ background: "#131c40" }}
+              >
+                {t}
+              </div>
+            ))}
+          </div>
+          <p className={`${pixel.className} mt-2 text-center text-[8px] text-white`}>
+            INSERT COIN
+          </p>
+        </div>
       </div>
-      <p className={`${pixel.className} mt-4 text-center text-sm`} style={{ color: NAVY }}>
-        ★ VIPER ARCADE ★
-      </p>
+      {/* control deck */}
+      <div
+        className="border-[3px] border-y-0 px-6 py-3"
+        style={{ borderColor: NAVY, background: "#8b95a9" }}
+      >
+        <div className="flex items-center justify-center gap-6">
+          <div className="flex flex-col items-center">
+            <div
+              className="h-4 w-4 rounded-full border-2"
+              style={{ borderColor: NAVY, background: "#ef4444" }}
+            />
+            <div className="h-6 w-1.5" style={{ background: NAVY }} />
+            <div
+              className="h-2 w-8 rounded-full border-2"
+              style={{ borderColor: NAVY, background: "#6b7488" }}
+            />
+          </div>
+          <div className="flex gap-2">
+            <div
+              className="h-5 w-5 rounded-full border-2"
+              style={{ borderColor: NAVY, background: "#22c55e" }}
+            />
+            <div
+              className="h-5 w-5 rounded-full border-2"
+              style={{ borderColor: NAVY, background: "#3b82f6" }}
+            />
+          </div>
+        </div>
+      </div>
+      {/* coin door */}
+      <div
+        className="rounded-b-2xl border-[3px] px-4 py-2"
+        style={{ borderColor: NAVY, background: "#aab4c4" }}
+      >
+        <div
+          className="mx-auto h-3 w-10 rounded border-2"
+          style={{ borderColor: NAVY, background: NAVY }}
+        />
+      </div>
     </div>
   );
 }
@@ -206,18 +256,12 @@ export default function LandingPage() {
         <p className={`${pixel.className} mb-6 text-lg`} style={{ color: NAVY }}>
           Welcome to the
         </p>
-        <Cartridge>
-          <div className="relative p-4">
-            <MiniSnake />
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <p className={`${pixel.className} text-center text-xl leading-relaxed text-white drop-shadow-[3px_3px_0_rgba(11,18,48,1)]`}>
-                THE ON-CHAIN
-                <br />
-                ARCADE.
-              </p>
-            </div>
-          </div>
-        </Cartridge>
+        <ArcadeCabinet />
+        <p className={`${pixel.className} mt-8 text-2xl leading-relaxed`} style={{ color: NAVY }}>
+          THE ON-CHAIN
+          <br />
+          ARCADE.
+        </p>
         <p className="mx-auto mt-8 max-w-xl text-sm font-medium leading-relaxed" style={{ color: NAVY }}>
           Six games. One VIPER token. Stake it, outplay everyone, and take the pot —
           every match settled on-chain on Robinhood Chain.

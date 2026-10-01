@@ -204,13 +204,6 @@ const UPCOMING = [
     href: "/snakes-ladders",
   },
   {
-    glyph: "🎲",
-    tileBg: "#fce7f3",
-    title: "DOUBLE OR NOTHING",
-    desc: "Pure chance. Stake USDG, call it — double up or lose it all, plus a 2,000 VIPER bonus on every win.",
-    href: "/double-or-nothing",
-  },
-  {
     glyph: "🦑",
     tileBg: "#e0f2fe",
     title: "SQUAD GAME",

@@ -11,23 +11,21 @@
 3. He sends **the wallet private key** (fresh single-purpose wallet only) → import once:
    `cast wallet import deployer --interactive`
    Verify it matches: `cast wallet address --account deployer` must equal the address from step 2.
-4. Confirm on-chain that his wallet holds **12,000,000 VIPER + 0.005 ETH** before running.
+4. Confirm on-chain that his wallet holds **10,000,000 VIPER + 0.005 ETH** before running.
 
 ## The window (one command)
 ```bash
 set -a && source launch-package/.env.mainnet && set +a
 LAUNCH_YES=1 bash scripts/launch-mainnet.sh
 ```
-The script deploys all six games, funds each VIPER reserve (2M), and writes
+The script deploys all five games, funds each VIPER reserve (2M), and writes
 `scripts/mainnet-deployment.json` with every contract address + tx hashes.
-Skipped only: DON bankroll (fund later via `fund()`).
 
 ## Right after (still inside the window)
-1. Copy the six addresses from `scripts/mainnet-deployment.json` into the
+1. Copy the five addresses from `scripts/mainnet-deployment.json` into the
    Vercel production env vars (`NEXT_PUBLIC_VIPER_*`), redeploy the site.
 2. Sanity check on mainnet: one tiny read per game (entry fee, treasury,
    VIPER bonus) — do NOT announce publicly until this passes.
 
-## Open decisions (do not block the deploy)
-- DON USDG bankroll amount + who funds it (currently 0 = fund later).
-- Retire Bobby's deployer wallet after launch: sweep leftovers, never reuse.
+## After launch
+- Retire Bobby's deployer wallet: sweep leftovers, never reuse.

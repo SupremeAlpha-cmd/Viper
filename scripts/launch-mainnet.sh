@@ -8,7 +8,7 @@
 #     - Winners ALSO get a fixed VIPER bonus per win, paid from a
 #       pre-funded on-chain rewards reserve (each game contract holds
 #       its own reserve; the rewards pool funds it via fundViper()).
-#     - Fixed VIPER bonus per win: DON 2,000 / S&L 4,000 / Snake 4,000 /
+#     - Fixed VIPER bonus per win: S&L 4,000 / Snake 4,000 /
 #       Arena 6,000 / Squad 6,000 / Chess 20,000 (fixed, not USD-pegged).
 #     - 5% game fee -> team treasury, in USDG.
 #
@@ -73,7 +73,7 @@ MAINNET_RPC="${MAINNET_RPC:-https://rpc.mainnet.chain.robinhood.com}"
 EXPECTED_CHAIN_ID="${EXPECTED_CHAIN_ID:-4663}"
 
 # Optional: per-game entry fees, in whole USD (converted to 6-decimal USDG units).
-# Locked tiers: DON $10 (variable stake), S&L $20, Snake $20, Arena $30, Squad $30, Chess $100.
+# Locked tiers: S&L $20, Snake $20, Arena $30, Squad $30, Chess $100.
 FEE_ARENA="${FEE_ARENA:-30}"
 FEE_SNAKE="${FEE_SNAKE:-20}"
 FEE_CHESS="${FEE_CHESS:-100}"
@@ -92,10 +92,6 @@ SQUAD_ROUND_DURATION="${SQUAD_ROUND_DURATION:-120}"
 SQUAD_PASS_NFT="${SQUAD_PASS_NFT:-0x0000000000000000000000000000000000000000}"
 SQUAD_PASS_FEE_USDG="${SQUAD_PASS_FEE_USDG:-0}"
 
-# Optional: Double or Nothing bankroll, in whole USDG. 0 = deploy but skip
-# funding — the bankroll can be topped up later via fund().
-DON_BANKROLL="${DON_BANKROLL:-0}"
-
 # Optional: VIPER bonus reserve per game, in whole VIPER (18 decimals).
 # Each game's reserve pays the fixed per-win bonus; 2,000,000 VIPER covers
 # ~333 arena wins / 100 chess wins. 0 = skip (fund later via fundViper()
@@ -107,7 +103,6 @@ CONTRACT_ARENA="${CONTRACT_ARENA:-ViperArena}"
 CONTRACT_SNAKE="${CONTRACT_SNAKE:-ViperSnake}"
 CONTRACT_CHESS="${CONTRACT_CHESS:-ViperChess}"
 CONTRACT_SQUAD="${CONTRACT_SQUAD:-ViperSquadGame}"
-CONTRACT_DON="${CONTRACT_DON:-ViperDoubleOrNothing}"
 CONTRACT_SL="${CONTRACT_SL:-ViperSnakesLadders}"
 
 # Optional: Blockscout verification. Only attempted if set; failures are warnings.
@@ -181,14 +176,13 @@ for f in \
   "contracts/src/${CONTRACT_SNAKE}.sol" \
   "contracts/src/${CONTRACT_CHESS}.sol" \
   "contracts/src/${CONTRACT_SQUAD}.sol" \
-  "contracts/src/${CONTRACT_DON}.sol" \
   "contracts/src/${CONTRACT_SL}.sol" ; do
   if [ ! -f "$f" ]; then
     echo "error: missing $f — the USDG rework has not been merged to main yet" >&2
     exit 1
   fi
 done
-log "All six contract sources present"
+log "All five contract sources present"
 
 # Constructor sanity: every game must expose usdg() and claimViper() selectors.
 # (Catches deploying a stale pre-rework build.)
@@ -196,9 +190,9 @@ for sel in "usdg()" "claimViper()"; do :; done
 
 if [ "$LAUNCH_YES" != "1" ]; then
   echo ""
-  echo "This will deploy ALL SIX Viper game contracts to Robinhood Chain MAINNET."
+  echo "This will deploy ALL FIVE Viper game contracts to Robinhood Chain MAINNET."
   echo "Entry fees (USDG): arena=\$$FEE_ARENA snake=\$$FEE_SNAKE chess=\$$FEE_CHESS squad=\$$FEE_SQUAD sl=\$$FEE_SL"
-  echo "DON bankroll: \$$DON_BANKROLL USDG | VIPER reserve/game: $VIPER_RESERVE_PER_GAME VIPER"
+  echo "VIPER reserve/game: $VIPER_RESERVE_PER_GAME VIPER"
   echo "Squad pass NFT: $SQUAD_PASS_NFT"
   read -rp "Type DEPLOY to continue: " CONFIRM
   [ "$CONFIRM" = "DEPLOY" ] || { echo "aborted"; exit 1; }
@@ -273,24 +267,8 @@ deploy squad "$CONTRACT_SQUAD" \
   "$SQUAD_MAX_PLAYERS" "$SQUAD_MIN_PLAYERS" "$SQUAD_ROUND_DURATION" \
   "$SQUAD_PASS_NFT" "$(usdg_units "$SQUAD_PASS_FEE_USDG")"
 
-deploy don "$CONTRACT_DON" \
-  "$USDG_TOKEN" "$VIPER_TOKEN" "$TREASURY" "$REWARDS_POOL"
-
 deploy sl "$CONTRACT_SL" \
   "$USDG_TOKEN" "$VIPER_TOKEN" "$(usdg_units "$FEE_SL")" "$TREASURY" "$REWARDS_POOL"
-
-# ---------------- DON BANKROLL (USDG) ----------------
-if [ "$DON_BANKROLL" != "0" ]; then
-  BANKROLL_UNITS="$(usdg_units "$DON_BANKROLL")"
-  log "Funding Double or Nothing bankroll ($DON_BANKROLL USDG)..."
-  cast send "$USDG_TOKEN" "approve(address,uint256)" "${ADDR[don]}" "$BANKROLL_UNITS" \
-    --rpc-url "$MAINNET_RPC" "${CAST_SIGNER_ARGS[@]}" >/dev/null
-  cast send "${ADDR[don]}" "fund(uint256)" "$BANKROLL_UNITS" \
-    --rpc-url "$MAINNET_RPC" "${CAST_SIGNER_ARGS[@]}" >/dev/null
-  log "Bankroll funded"
-else
-  log "DON_BANKROLL=0 — skipping bankroll funding (top up later via fund())"
-fi
 
 # ---------------- VIPER BONUS RESERVES ----------------
 # Each game is pre-funded with VIPER so winners' bonuses pay out on day one.
@@ -298,7 +276,7 @@ fi
 # an unfunded game still runs — only the bonus degrades (BonusShortfall).
 if [ "$VIPER_RESERVE_PER_GAME" != "0" ]; then
   RESERVE_WEI="$(viper_wei "$VIPER_RESERVE_PER_GAME")"
-  for key in arena snake chess squad don sl; do
+  for key in arena snake chess squad sl; do
     gaddr="${ADDR[$key]}"
     log "Funding $key VIPER reserve ($VIPER_RESERVE_PER_GAME VIPER)..."
     if cast send "$VIPER_TOKEN" "approve(address,uint256)" "$gaddr" "$RESERVE_WEI" \
@@ -336,7 +314,6 @@ cat > "$OUT_JSON" <<EOF
     "snake":            { "contract": "$CONTRACT_SNAKE",            "address": "${ADDR[snake]}", "tx": "${TX[snake]}" },
     "chess":            { "contract": "$CONTRACT_CHESS",            "address": "${ADDR[chess]}", "tx": "${TX[chess]}" },
     "squad-game":       { "contract": "$CONTRACT_SQUAD",            "address": "${ADDR[squad]}", "tx": "${TX[squad]}" },
-    "double-or-nothing":{ "contract": "$CONTRACT_DON",              "address": "${ADDR[don]}",   "tx": "${TX[don]}" },
     "snakes-ladders":   { "contract": "$CONTRACT_SL",               "address": "${ADDR[sl]}",    "tx": "${TX[sl]}" }
   }
 }
@@ -350,7 +327,6 @@ echo "NEXT_PUBLIC_VIPER_ARENA=${ADDR[arena]}"
 echo "NEXT_PUBLIC_VIPER_SNAKE=${ADDR[snake]}"
 echo "NEXT_PUBLIC_VIPER_CHESS=${ADDR[chess]}"
 echo "NEXT_PUBLIC_VIPER_SQUAD_GAME=${ADDR[squad]}"
-echo "NEXT_PUBLIC_VIPER_DOUBLE_OR_NOTHING=${ADDR[don]}"
 echo "NEXT_PUBLIC_VIPER_SNAKES_LADDERS=${ADDR[sl]}"
 echo "# (token addresses are read on-chain; no token env vars needed)"
 echo "==================================================================="

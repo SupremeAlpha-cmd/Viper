@@ -38,9 +38,6 @@ export function Chrome({ children }: { children: React.ReactNode }) {
           <Link href="/" className="hover:text-white">
             Bomber
           </Link>
-          <Link href="/double-or-nothing" className="hover:text-white">
-            Double or Nothing
-          </Link>
           <Link href="/snakes-ladders" className="hover:text-white">
             Snakes & Ladders
           </Link>

@@ -35,6 +35,12 @@ export function Chrome({ children }: { children: React.ReactNode }) {
           <span className="font-pixel text-sm text-white">VIPER</span>
         </Link>
         <nav className="hidden gap-6 text-xs font-bold uppercase tracking-widest text-white/80 md:flex">
+          <Link href="/" className="hover:text-white">
+            Bomber
+          </Link>
+          <Link href="/snakes-ladders" className="hover:text-white">
+            Snakes & Ladders
+          </Link>
           <Link href="/landing" className="hover:text-white">
             About
           </Link>

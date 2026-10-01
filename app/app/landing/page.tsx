@@ -201,6 +201,7 @@ const UPCOMING = [
     tileBg: "#fef3c7",
     title: "SNAKES & LADDERS",
     desc: "Four team colors, one board. Race to square 100 — the winning team takes the pot.",
+    href: "/snakes-ladders",
   },
   {
     glyph: "🎲",
@@ -293,10 +294,27 @@ export default function LandingPage() {
           {UPCOMING.map((g) => (
             <Card key={g.title}>
               <p className={`${pixel.className} mb-3 text-center text-xs`}>{g.title}</p>
-              <GlyphTile glyph={g.glyph} bg={g.tileBg} />
+              {g.href ? (
+                <Link href={g.href}>
+                  <GlyphTile glyph={g.glyph} bg={g.tileBg} />
+                </Link>
+              ) : (
+                <GlyphTile glyph={g.glyph} bg={g.tileBg} />
+              )}
               <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
                 {g.desc}
               </p>
+              {g.href && (
+                <div className="mt-3 text-center">
+                  <Link
+                    href={g.href}
+                    className={`${pixel.className} inline-block rounded-xl border-2 px-3 py-1.5 text-[9px] text-white transition hover:opacity-90`}
+                    style={{ borderColor: NAVY, background: NAVY }}
+                  >
+                    ▶ PLAY NOW
+                  </Link>
+                </div>
+              )}
             </Card>
           ))}
         </div>

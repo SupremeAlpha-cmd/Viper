@@ -66,6 +66,8 @@ export const erc20Abi = [
 
 export const GRID = 11;
 export const LOBBY_SECONDS = 60;
+/** Keep in sync with ViperArena.MAX_PATH_STEPS (contract constant). */
+export const MAX_PATH_STEPS = 20;
 
 export function shortAddr(a: string): string {
   return a.slice(0, 6) + "…" + a.slice(-4);

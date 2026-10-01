@@ -26,6 +26,9 @@ contract ViperArena {
     uint8 public constant BLAST_RADIUS = 3;   // tiles in each direction
     uint256 public constant LOBBY_DURATION = 60; // seconds
     uint256 public constant FEE_BPS = 500;    // 5% protocol fee
+    /// @dev Cap on steps per movePath call. Bounds gas: each step is a few
+    ///      SSTOREs plus one event. 20 steps is a full-board dash.
+    uint8 public constant MAX_PATH_STEPS = 20;
 
     /// @dev Fuse and match length are measured in blocks so they track the
     ///      chain's real cadence. Calibrate against Robinhood Chain's actual
@@ -80,8 +83,9 @@ contract ViperArena {
     }
 
     /// @notice Browser-held session keys authorized for gameplay-only
-    ///         actions. A session key can never move funds: move/plantBomb
-    ///         resolve it to its player; everything else keys off msg.sender.
+    ///         actions. A session key can never move funds: move/movePath/
+    ///         plantBomb resolve it to its player; everything else keys off
+    ///         msg.sender.
     mapping(address => SessionAuth) public sessions;
 
     bool private _locked;
@@ -200,7 +204,7 @@ contract ViperArena {
         emit MatchStarted(matchId, players.length);
     }
 
-    // ---- Gameplay: every move and bomb is a transaction ----
+    // ---- Gameplay: moves, paths and bombs are transactions ----
 
     /// @notice Move one tile orthogonally. Callable directly by a joined
     ///         player or by their authorized session key (zero pop-ups).
@@ -224,6 +228,40 @@ contract ViperArena {
         px[player] = _toU8(nx);
         py[player] = _toU8(ny);
         emit PlayerMoved(matchId, player, _toU8(nx), _toU8(ny));
+        _settle();
+    }
+
+    /// @notice Execute a multi-cell path in ONE transaction: up to
+    ///         MAX_PATH_STEPS orthogonal steps, validated per step exactly
+    ///         like move(). Atomic: the first invalid step reverts the whole
+    ///         path, so the client can simulate against its last sync and
+    ///         only submit paths it expects to succeed. Callable directly
+    ///         or via an authorized session key (zero pop-ups).
+    /// @dev Explosions are processed once up front: block.number cannot
+    ///      change mid-transaction, so no bomb can become due between steps.
+    function movePath(int8[] calldata steps) external nonReentrant {
+        require(phase == Phase.Live, "not live");
+        require(steps.length > 0 && steps.length % 2 == 0, "bad path length");
+        require(steps.length / 2 <= MAX_PATH_STEPS, "path too long");
+        _processExplosions();
+        address player = _resolvePlayer(msg.sender);
+        if (!alive[player]) {
+            // Same SEC-01 rule as move(): finalize, don't roll back the death.
+            _settle();
+            return;
+        }
+        for (uint256 i = 0; i < steps.length; i += 2) {
+            int8 dx = steps[i];
+            int8 dy = steps[i + 1];
+            int16 nx = int16(int8(px[player])) + int16(dx);
+            int16 ny = int16(int8(py[player])) + int16(dy);
+            require(_abs(dx) + _abs(dy) == 1, "one orthogonal step");
+            require(nx >= 0 && ny >= 0 && nx < int16(uint16(GRID)) && ny < int16(uint16(GRID)), "out of bounds");
+            require(!_liveBombAt(_toU8(nx), _toU8(ny)), "tile has live bomb");
+            px[player] = _toU8(nx);
+            py[player] = _toU8(ny);
+            emit PlayerMoved(matchId, player, _toU8(nx), _toU8(ny));
+        }
         _settle();
     }
 

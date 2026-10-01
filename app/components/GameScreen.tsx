@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useViper, formatTokens, type MatchResult } from "../lib/useViper";
-import { shortAddr } from "../lib/contract";
+import { shortAddr, MAX_PATH_STEPS } from "../lib/contract";
 import { ArenaGrid } from "./ArenaGrid";
 import { LobbyPanel } from "./LobbyPanel";
 import { NetworkBanner } from "./NetworkBanner";
@@ -84,6 +84,52 @@ function CtrlBtn({
 export function GameScreen() {
   const v = useViper();
   const [dismissed, setDismissed] = useState<number | null>(null);
+
+  // Path drawing: press on your own tile, drag across adjacent tiles,
+  // release to fire the whole route as ONE transaction.
+  const [path, setPath] = useState<{ x: number; y: number }[]>([]);
+  const [drawing, setDrawing] = useState(false);
+  const drawingRef = useRef(false);
+  const pathRef = useRef<{ x: number; y: number }[]>([]);
+
+  const startPath = () => {
+    if (!v.myTurnAlive || !v.selfPos || v.pending) return;
+    drawingRef.current = true;
+    pathRef.current = [];
+    setPath([]);
+    setDrawing(true);
+  };
+
+  const extendPath = (x: number, y: number) => {
+    if (!drawingRef.current || !v.selfPos) return;
+    const cur = pathRef.current;
+    const last = cur.length > 0 ? cur[cur.length - 1] : v.selfPos;
+    if (x === last.x && y === last.y) return;
+    if (Math.abs(x - last.x) + Math.abs(y - last.y) !== 1) return;
+    if (cur.length >= MAX_PATH_STEPS) return;
+    const next = [...cur, { x, y }];
+    pathRef.current = next;
+    setPath(next);
+  };
+
+  // Release anywhere: submit the drawn path, or discard an empty tap.
+  useEffect(() => {
+    const up = () => {
+      if (!drawingRef.current) return;
+      drawingRef.current = false;
+      setDrawing(false);
+      const p = pathRef.current;
+      pathRef.current = [];
+      setPath([]);
+      if (p.length > 0) v.movePath(p).catch(() => {});
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [v.movePath]);
 
   // Keyboard controls: arrows/WASD to move, Space to plant.
   useEffect(() => {
@@ -267,8 +313,25 @@ export function GameScreen() {
               flashes={v.flashes}
               blockNumber={v.blockNumber}
               self={v.address}
+              selfPos={v.selfPos}
+              path={path}
+              drawing={drawing}
+              onPathStart={startPath}
+              onPathExtend={extendPath}
             />
           </Cartridge>
+          {drawing && (
+            <div
+              className="font-pixel mt-3 rounded-2xl border-[3px] bg-white px-4 py-2 text-center text-[10px]"
+              style={{
+                borderColor: NAVY,
+                color: NAVY,
+                boxShadow: `3px 3px 0 ${NAVY}`,
+              }}
+            >
+              PATH ×{path.length} — RELEASE TO SEND IT
+            </div>
+          )}
 
           {/* Session-key fast-play status */}
           {v.sessionLive && (
@@ -327,8 +390,8 @@ export function GameScreen() {
               className="mt-4 text-center text-xs font-bold"
               style={{ color: NAVY, opacity: 0.65 }}
             >
-              Arrows / WASD to move · Space to plant · every action is an on-chain
-              transaction
+              Arrows / WASD to move · Space to plant · drag from your tile to
+              queue a path in one tx · every action is on-chain
               {v.sessionLive && (
                 <span style={{ color: "#16a34a" }}> · ⚡ fast play: no pop-ups</span>
               )}

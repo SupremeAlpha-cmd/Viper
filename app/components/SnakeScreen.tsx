@@ -221,6 +221,7 @@ export function SnakeScreen() {
           "Eat coins to grow longer and stack score.",
           "Die if you hit a wall, a body, or a longer snake head-on. Dead snakes scatter as coins — slither over them.",
           "1 tick = 1 block. Last snake alive wins; on timeout the pot splits by score.",
+          "Winner takes the USDG pot plus a 4,000 VIPER bonus.",
         ]}
       />
       <NetworkBanner />
@@ -228,7 +229,7 @@ export function SnakeScreen() {
       <div className="mb-5 flex items-center justify-between gap-3">
         <BalanceChip
           game="snake"
-          stakeToken={v.stakeToken}
+          usdg={v.usdg}
           tokenSymbol={v.tokenSymbol}
           tokenDecimals={v.tokenDecimals}
           betweenMatches={v.phase === "lobby"}
@@ -256,6 +257,25 @@ export function SnakeScreen() {
             style={{ background: GREEN }}
           >
             {v.pending === "claim" ? "CLAIMING…" : "CLAIM 💰"}
+          </button>
+        </div>
+      )}
+
+      {v.isConnected && v.pendingViperBonus > BigInt(0) && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border-2 border-[#26314d] bg-[#0b1020] p-5">
+          <div>
+            <div className="font-pixel text-[10px] uppercase tracking-widest text-zinc-500">VIPER winner bonus</div>
+            <div className="font-pixel mt-2 text-xl" style={{ color: "#a78bfa" }}>
+              {formatTokens(v.pendingViperBonus, 18)} VIPER
+            </div>
+          </div>
+          <button
+            onClick={() => v.claimViperBonus().catch(() => {})}
+            disabled={v.pending !== null}
+            className="font-pixel rounded-2xl px-6 py-3 text-[11px] text-black transition active:scale-[0.98] disabled:opacity-40"
+            style={{ background: "#a78bfa" }}
+          >
+            {v.pending === "claimViper" ? "CLAIMING…" : "CLAIM ⚡"}
           </button>
         </div>
       )}

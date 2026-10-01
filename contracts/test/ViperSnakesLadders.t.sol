@@ -31,8 +31,38 @@ contract MockVIPER {
     }
 }
 
+/// @notice 6-decimal mock USDG used as the games' stake token.
+contract MockUSDG {
+    uint8 public decimals = 6;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
+
+    function approve(address sp, uint256 amt) external returns (bool) {
+        allowance[msg.sender][sp] = amt;
+        return true;
+    }
+
+    function transfer(address to, uint256 amt) external returns (bool) {
+        require(balanceOf[msg.sender] >= amt, "bal");
+        balanceOf[msg.sender] -= amt;
+        balanceOf[to] += amt;
+        return true;
+    }
+
+    function transferFrom(address f, address t, uint256 amt) external returns (bool) {
+        require(balanceOf[f] >= amt && allowance[f][msg.sender] >= amt, "allow");
+        allowance[f][msg.sender] -= amt;
+        balanceOf[f] -= amt;
+        balanceOf[t] += amt;
+        return true;
+    }
+}
+
 contract ViperSnakesLaddersTest is Test {
-    MockVIPER token;
+    MockUSDG usdg;
+    MockVIPER viper;
     ViperSnakesLadders game;
 
     address constant ALICE = address(0xAA);
@@ -41,19 +71,60 @@ contract ViperSnakesLaddersTest is Test {
     address constant DAVE = address(0xDD);
     address constant EVE = address(0xEE);
     address constant TREASURY = address(0x777);
+    address constant REWARDS_POOL = address(0x99);
 
     uint256 constant ENTRY = 100 ether;
 
     function setUp() public {
-        token = new MockVIPER();
-        game = new ViperSnakesLadders(address(token), ENTRY, TREASURY);
+        usdg = new MockUSDG();
+        viper = new MockVIPER();
+        game = new ViperSnakesLadders(address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL);
 
         address[5] memory users = [ALICE, BOB, CHARLIE, DAVE, EVE];
         for (uint256 i = 0; i < users.length; i++) {
-            token.mint(users[i], 10000 ether);
+            usdg.mint(users[i], 10000 ether);
             vm.prank(users[i]);
-            token.approve(address(game), type(uint256).max);
+            usdg.approve(address(game), type(uint256).max);
         }
+
+        // Fund the VIPER bonus reserve.
+        viper.mint(address(this), 1_000_000e18);
+        viper.approve(address(game), 1_000_000e18);
+        game.fundViper(1_000_000e18);
+    }
+
+    /// @dev Play a 3-player RED/BLUE match to settlement: ALICE 100 + EVE 300
+    ///      on RED, BOB 600 on BLUE.
+    function _playStakesMatch(ViperSnakesLadders g) internal {
+        vm.prank(ALICE);
+        g.join(ViperSnakesLadders.Team.RED, 100 ether);
+        vm.prank(EVE);
+        g.join(ViperSnakesLadders.Team.RED, 300 ether);
+        vm.prank(BOB);
+        g.join(ViperSnakesLadders.Team.BLUE, 600 ether);
+
+        vm.warp(block.timestamp + 61);
+        g.startMatch();
+
+        while (g.phase() == ViperSnakesLadders.Phase.Live) {
+            ViperSnakesLadders.Team turn = g.currentTurn();
+            if (turn == ViperSnakesLadders.Team.RED) {
+                vm.prank(ALICE);
+                g.roll();
+            } else {
+                vm.prank(BOB);
+                g.roll();
+            }
+            vm.roll(block.number + 1);
+        }
+    }
+
+    /// @dev Scan recorded logs for an event signature.
+    function _sawEvent(Vm.Log[] memory logs, bytes32 sig) internal pure returns (bool) {
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) return true;
+        }
+        return false;
     }
 
     function _joinFourAndStart() internal {
@@ -287,7 +358,7 @@ contract ViperSnakesLaddersTest is Test {
         // Test claim()
         vm.prank(TREASURY);
         game.claim();
-        assertEq(token.balanceOf(TREASURY), treasuryBal);
+        assertEq(usdg.balanceOf(TREASURY), treasuryBal);
         assertEq(game.pendingWithdrawals(TREASURY), 0);
     }
 
@@ -329,11 +400,11 @@ contract ViperSnakesLaddersTest is Test {
 
             vm.prank(ALICE);
             game.claim();
-            assertEq(token.balanceOf(ALICE), 10000 ether - 100 ether + 237.5 ether);
+            assertEq(usdg.balanceOf(ALICE), 10000 ether - 100 ether + 237.5 ether);
 
             vm.prank(EVE);
             game.claim();
-            assertEq(token.balanceOf(EVE), 10000 ether - 300 ether + 712.5 ether);
+            assertEq(usdg.balanceOf(EVE), 10000 ether - 300 ether + 712.5 ether);
         }
     }
 
@@ -414,6 +485,94 @@ contract ViperSnakesLaddersTest is Test {
 
         vm.prank(ALICE);
         game.claim();
-        assertEq(token.balanceOf(ALICE), 10000 ether);
+        assertEq(usdg.balanceOf(ALICE), 10000 ether);
+    }
+
+    // ---- VIPER bonus tests ----
+
+    event ViperFunded(address indexed funder, uint256 amount);
+    event ViperBonusCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event BonusShortfall(uint256 indexed matchId, address indexed to, uint256 needed, uint256 credited);
+
+    /// @dev The VIPER bonus mirrors the pro-rata-by-stake prize split.
+    function test_WinCreditsViperBonusProRata() public {
+        _playStakesMatch(game);
+
+        if (game.pendingWithdrawals(ALICE) > 0) {
+            // RED won: ALICE staked 100/400, EVE staked 300/400.
+            uint256 bonusA = (game.BONUS_PER_WIN() * 100 ether) / 400 ether;
+            uint256 bonusE = (game.BONUS_PER_WIN() * 300 ether) / 400 ether;
+            assertEq(game.pendingViperBonus(ALICE), bonusA);
+            assertEq(game.pendingViperBonus(EVE), bonusE);
+            assertEq(game.pendingViperBonus(BOB), 0, "loser gets no bonus");
+            assertEq(game.viperBonusOwed(), bonusA + bonusE);
+        } else {
+            // BLUE won: BOB is the sole staker, takes the full bonus.
+            assertEq(game.pendingViperBonus(BOB), game.BONUS_PER_WIN());
+            assertEq(game.pendingViperBonus(ALICE), 0);
+            assertEq(game.pendingViperBonus(EVE), 0);
+            assertEq(game.viperBonusOwed(), game.BONUS_PER_WIN());
+        }
+    }
+
+    function test_ClaimViper() public {
+        _playStakesMatch(game);
+
+        address winner = game.pendingViperBonus(ALICE) > 0
+            ? ALICE
+            : (game.pendingViperBonus(EVE) > 0 ? EVE : BOB);
+        uint256 owed = game.pendingViperBonus(winner);
+        assertGt(owed, 0, "someone must have won");
+
+        uint256 before = viper.balanceOf(winner);
+        vm.prank(winner);
+        game.claimViper();
+        assertEq(viper.balanceOf(winner), before + owed);
+        assertEq(game.pendingViperBonus(winner), 0);
+
+        vm.prank(winner);
+        vm.expectRevert("nothing to claim");
+        game.claimViper();
+    }
+
+    function test_FundViperEmitsAndZeroReverts() public {
+        uint256 amt = 1000e18;
+        viper.mint(address(this), amt);
+        viper.approve(address(game), amt);
+        vm.expectEmit(true, false, false, true);
+        emit ViperFunded(address(this), amt);
+        game.fundViper(amt);
+        assertEq(viper.balanceOf(address(game)), 1_000_000e18 + amt);
+        vm.expectRevert("zero amount");
+        game.fundViper(0);
+    }
+
+    /// @dev An empty VIPER reserve never bricks settlement: all USDG is
+    ///      still distributed, bonuses degrade to BonusShortfall events.
+    function test_UnderfundedWinStillPaysUsdg() public {
+        ViperSnakesLadders poor = new ViperSnakesLadders(
+            address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL
+        );
+        vm.prank(ALICE); usdg.approve(address(poor), type(uint256).max);
+        vm.prank(EVE); usdg.approve(address(poor), type(uint256).max);
+        vm.prank(BOB); usdg.approve(address(poor), type(uint256).max);
+
+        vm.recordLogs();
+        _playStakesMatch(poor);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        // Pot (100 + 300 + 600 ether) fully distributed as USDG despite the empty reserve.
+        uint256 totalClaimable = poor.pendingWithdrawals(ALICE) +
+            poor.pendingWithdrawals(EVE) +
+            poor.pendingWithdrawals(BOB) +
+            poor.pendingWithdrawals(TREASURY);
+        assertEq(totalClaimable, 1000 ether, "USDG fully distributed");
+        assertEq(poor.pendingViperBonus(ALICE), 0);
+        assertEq(poor.pendingViperBonus(BOB), 0);
+        assertEq(poor.viperBonusOwed(), 0);
+        assertTrue(
+            _sawEvent(logs, keccak256("BonusShortfall(uint256,address,uint256,uint256)")),
+            "no BonusShortfall event"
+        );
     }
 }

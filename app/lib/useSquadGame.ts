@@ -71,7 +71,7 @@ export function useSquadGame() {
   const [checkInCount, setCheckInCount] = useState<number>(0);
   const [maxPlayers, setMaxPlayers] = useState<number>(32);
   const [entryFee, setEntryFee] = useState<bigint>(BigInt(0));
-  const [stakeToken, setStakeToken] = useState<`0x${string}` | null>(null);
+  const [usdg, setUsdg] = useState<`0x${string}` | null>(null);
   const [tokenSymbol, setTokenSymbol] = useState<string>("tokens");
   const [tokenDecimals, setTokenDecimals] = useState<number>(18);
   const [passEnabled, setPassEnabled] = useState<boolean>(false);
@@ -79,6 +79,7 @@ export function useSquadGame() {
   const [result, setResult] = useState<SquadResult | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] = useState<bigint>(BigInt(0));
+  const [pendingViperBonus, setPendingViperBonus] = useState<bigint>(BigInt(0));
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<SessionKey | null>(null);
   const [topUp, setTopUp] = useState<{ wei: bigint; moves: number } | null>(null);
@@ -137,7 +138,7 @@ export function useSquadGame() {
         read<bigint>("pot"),
         read<bigint>("aliveCount"),
         read<bigint>("entryFee"),
-        read<`0x${string}`>("stakeToken"),
+        read<`0x${string}`>("usdg"),
         read<bigint>("maxPlayers"),
         read<bigint>("roundDuration"),
         read<boolean>("passEnabled"),
@@ -145,7 +146,7 @@ export function useSquadGame() {
       setPot(potV);
       setAliveCount(num(aliveN));
       setEntryFee(fee);
-      setStakeToken(token);
+      setUsdg(token);
       setMaxPlayers(num(maxP));
       setRoundDuration(num(roundDur));
       setPassEnabled(passOn);
@@ -202,6 +203,13 @@ export function useSquadGame() {
             args: [address],
           })) as bigint;
           setPendingWithdrawal(pw);
+          const pvb = (await publicClient.readContract({
+            address: VIPER_SQUAD_GAME_ADDRESS,
+            abi: squadGameAbi,
+            functionName: "pendingViperBonus",
+            args: [address],
+          })) as bigint;
+          setPendingViperBonus(pvb);
         } catch { /* none */ }
       }
 
@@ -316,17 +324,17 @@ export function useSquadGame() {
   );
 
   const join = useCallback(async () => {
-    if (!walletClient || !address || !publicClient || !stakeToken) return;
+    if (!walletClient || !address || !publicClient || !usdg) return;
     setPending("join");
     setError(null);
     try {
       const allowance = (await publicClient.readContract({
-        address: stakeToken, abi: erc20Abi, functionName: "allowance",
+        address: usdg, abi: erc20Abi, functionName: "allowance",
         args: [address, VIPER_SQUAD_GAME_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
-          address: stakeToken, abi: erc20Abi, functionName: "approve",
+          address: usdg, abi: erc20Abi, functionName: "approve",
           args: [VIPER_SQUAD_GAME_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
@@ -338,10 +346,11 @@ export function useSquadGame() {
     } finally {
       setPending(null);
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee, write]);
+  }, [walletClient, address, publicClient, usdg, entryFee, write]);
 
   const startMatch = useCallback(() => write("start", "startMatch"), [write]);
   const claimWinnings = useCallback(() => write("claim", "claim"), [write]);
+  const claimViperBonus = useCallback(() => write("claimViper", "claimViper"), [write]);
   const resolveRound = useCallback(() => write("resolve", "resolveRound"), [write]);
 
   const sessionSend = useCallback(
@@ -374,7 +383,7 @@ export function useSquadGame() {
   const survive = useCallback(() => sessionSend("survive", []), [sessionSend]);
 
   const joinFast = useCallback(async () => {
-    if (!walletClient || !address || !publicClient || !stakeToken) return;
+    if (!walletClient || !address || !publicClient || !usdg) return;
     setPending("join");
     setError(null);
     try {
@@ -390,12 +399,12 @@ export function useSquadGame() {
         throw new Error("could not estimate gas — check the network and try again");
       }
       const allowance = (await publicClient.readContract({
-        address: stakeToken, abi: erc20Abi, functionName: "allowance",
+        address: usdg, abi: erc20Abi, functionName: "allowance",
         args: [address, VIPER_SQUAD_GAME_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
-          address: stakeToken, abi: erc20Abi, functionName: "approve",
+          address: usdg, abi: erc20Abi, functionName: "approve",
           args: [VIPER_SQUAD_GAME_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
@@ -426,7 +435,7 @@ export function useSquadGame() {
     } finally {
       setPending(null);
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee, sync, target]);
+  }, [walletClient, address, publicClient, usdg, entryFee, sync, target]);
 
   const revokeSession = useCallback(async () => {
     if (!session) return;
@@ -450,9 +459,10 @@ export function useSquadGame() {
     isConnected, address,
     phase, matchId, lobbyEndsAt, round, roundEndsAt, roundDuration, blockNumber,
     players, pot, aliveCount, checkInCount, maxPlayers,
-    entryFee, stakeToken, tokenSymbol, tokenDecimals, passEnabled,
+    entryFee, usdg, tokenSymbol, tokenDecimals, passEnabled,
     eliminations, result, pending, error,
     pendingWithdrawal,
+    pendingViperBonus, claimViperBonus,
     joined, me,
     join, joinFast, startMatch, survive, resolveRound, claimWinnings, sync,
     session,

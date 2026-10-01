@@ -62,7 +62,7 @@ export function HowToOverlay({ forceOpen, onClose }: HowToOverlayProps) {
             <div>
               <span className="font-bold text-zinc-900">1. PICK YOUR TEAM & STAKE:</span>
               <p className="text-zinc-600 mt-0.5">
-                Join RED, BLUE, GREEN, or YELLOW by staking VIPER into the team pool during the 60s lobby.
+                Join RED, BLUE, GREEN, or YELLOW by staking USDG into the team pool during the 60s lobby. The winning team also splits a 4,000 VIPER bonus.
               </p>
             </div>
           </div>
@@ -92,7 +92,7 @@ export function HowToOverlay({ forceOpen, onClose }: HowToOverlayProps) {
             <div>
               <span className="font-bold text-zinc-900">4. WINNER TAKES 95%:</span>
               <p className="text-zinc-600 mt-0.5">
-                First team to reach or exceed square 100 wins! Winning players split 95% of the pot pro-rata by stake. 5% to treasury.
+                First team to reach or exceed square 100 wins! Winning players split 95% of the USDG pot pro-rata by stake, plus a 4,000 VIPER bonus split the same way. 5% to treasury.
               </p>
             </div>
           </div>

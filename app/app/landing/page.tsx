@@ -207,7 +207,7 @@ const UPCOMING = [
     glyph: "🎲",
     tileBg: "#fce7f3",
     title: "DOUBLE OR NOTHING",
-    desc: "Pure chance. Stake your VIPER, call it — double up or lose it all.",
+    desc: "Pure chance. Stake USDG, call it — double up or lose it all, plus a 2,000 VIPER bonus on every win.",
     href: "/double-or-nothing",
   },
   {
@@ -254,8 +254,8 @@ export default function LandingPage() {
           ARCADE.
         </p>
         <p className="mx-auto mt-8 max-w-xl text-sm font-medium leading-relaxed" style={{ color: NAVY }}>
-          Six games. One VIPER token. Stake it, outplay everyone, and take the pot —
-          every match settled on-chain on Robinhood Chain.
+          Six games. One arcade. Stake USDG, outplay everyone, and take the pot —
+          plus a VIPER bonus on every win. Every match settled on-chain on Robinhood Chain.
         </p>
         <Link
           href="/"
@@ -326,9 +326,9 @@ export default function LandingPage() {
         <Kicker>How it works</Kicker>
         <div className="grid gap-6 md:grid-cols-3">
           {[
-            { n: "01", title: "STAKE", desc: "Connect your wallet, stake VIPER, and enter any game in the arcade." },
+            { n: "01", title: "STAKE", desc: "Connect your wallet, stake USDG, and enter any game in the arcade." },
             { n: "02", title: "OUTPLAY", desc: "Sign once, then play in real time. No wallet popups in the middle of a match." },
-            { n: "03", title: "TAKE THE POT", desc: "Winners take 95% of the pot. The arcade keeps 5%. Settled on-chain, instantly." },
+            { n: "03", title: "TAKE THE POT", desc: "Winners take 95% of the pot plus a VIPER bonus. The arcade keeps 5%. Settled on-chain, instantly." },
           ].map((s) => (
             <Card key={s.n} className="text-center">
               <p className={`${pixel.className} text-2xl`} style={{ color: "#2e7cf6" }}>{s.n}</p>

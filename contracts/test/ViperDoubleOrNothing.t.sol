@@ -33,41 +33,114 @@ contract MockVIPER is IERC20 {
     }
 }
 
+/// @notice 6-decimal mock USDG used as the games' stake/bankroll token.
+contract MockUSDG is IERC20 {
+    uint8 public decimals = 6;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amt) external {
+        balanceOf[to] += amt;
+    }
+
+    function approve(address sp, uint256 amt) external returns (bool) {
+        allowance[msg.sender][sp] = amt;
+        return true;
+    }
+
+    function transfer(address to, uint256 amt) external returns (bool) {
+        require(balanceOf[msg.sender] >= amt, "bal");
+        balanceOf[msg.sender] -= amt;
+        balanceOf[to] += amt;
+        return true;
+    }
+
+    function transferFrom(address f, address t, uint256 amt) external returns (bool) {
+        require(balanceOf[f] >= amt && allowance[f][msg.sender] >= amt, "allow");
+        allowance[f][msg.sender] -= amt;
+        balanceOf[f] -= amt;
+        balanceOf[t] += amt;
+        return true;
+    }
+}
+
 contract ViperDoubleOrNothingTest is Test {
-    MockVIPER token;
+    MockUSDG usdg;
+    MockVIPER viper;
     ViperDoubleOrNothing game;
 
     address constant ALICE = address(0xAA);
     address constant BOB = address(0xBB);
     address constant TREASURY = address(0x77);
+    address constant REWARDS_POOL = address(0x99);
     address constant SESSION_KEY = address(0x55);
 
-    uint256 constant INITIAL_BANKROLL = 1000 * 1e18; // 1000 VIPER
-    uint256 constant STAKE = 50 * 1e18;              // 50 VIPER (5% of bankroll <= 10%)
+    uint256 constant INITIAL_BANKROLL = 1000 * 1e18; // 1000 USDG (raw units)
+    uint256 constant STAKE = 50 * 1e18;              // 50 USDG (5% of bankroll <= 10%)
 
     event FlipCommitted(address indexed player, bytes32 commitment, uint256 stake);
     event FlipRevealed(address indexed player, bool won, uint256 payout);
     event BankrollFunded(address indexed funder, uint256 amount);
     event Refunded(address indexed player, uint256 amount);
+    event ViperFunded(address indexed funder, uint256 amount);
+    event ViperBonusCredited(address indexed to, uint256 amount);
+    event BonusShortfall(address indexed to, uint256 needed, uint256 credited);
 
     function setUp() public {
-        token = new MockVIPER();
-        game = new ViperDoubleOrNothing(address(token), TREASURY);
+        usdg = new MockUSDG();
+        viper = new MockVIPER();
+        game = new ViperDoubleOrNothing(address(usdg), address(viper), TREASURY, REWARDS_POOL);
 
-        // Fund bankroll from deployer
-        token.mint(address(this), INITIAL_BANKROLL);
-        token.approve(address(game), INITIAL_BANKROLL);
+        // Fund bankroll (USDG) from deployer
+        usdg.mint(address(this), INITIAL_BANKROLL);
+        usdg.approve(address(game), INITIAL_BANKROLL);
         game.fund(INITIAL_BANKROLL);
 
-        // Mint and approve for ALICE and BOB
-        token.mint(ALICE, 500 * 1e18);
-        token.mint(BOB, 500 * 1e18);
+        // Fund the VIPER bonus reserve
+        viper.mint(address(this), 1_000_000e18);
+        viper.approve(address(game), 1_000_000e18);
+        game.fundViper(1_000_000e18);
+
+        // Mint and approve USDG for ALICE and BOB
+        usdg.mint(ALICE, 500 * 1e18);
+        usdg.mint(BOB, 500 * 1e18);
 
         vm.prank(ALICE);
-        token.approve(address(game), type(uint256).max);
+        usdg.approve(address(game), type(uint256).max);
 
         vm.prank(BOB);
-        token.approve(address(game), type(uint256).max);
+        usdg.approve(address(game), type(uint256).max);
+    }
+
+    /// @dev Commit + reveal a winning flip for `player` on game `g`.
+    function _winFlip(ViperDoubleOrNothing g, address player, uint256 stake) internal {
+        bytes32 secret = bytes32(uint256(777));
+        uint256 cBlock = block.number;
+
+        // Predict coin outcome at next block
+        vm.roll(cBlock + 1);
+        vm.warp(block.timestamp + 2);
+        uint8 coin = g.getCoin(player, secret, cBlock);
+
+        // Rewind and commit winning choice
+        vm.roll(cBlock);
+        vm.warp(block.timestamp - 2);
+        vm.prank(player);
+        g.flipCommit(stake, keccak256(abi.encodePacked(coin, secret)));
+
+        // Advance to reveal block
+        vm.roll(cBlock + 1);
+        vm.warp(block.timestamp + 2);
+        vm.prank(player);
+        g.flipReveal(coin, secret);
+    }
+
+    /// @dev Scan recorded logs for an event signature.
+    function _sawEvent(Vm.Log[] memory logs, bytes32 sig) internal pure returns (bool) {
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) return true;
+        }
+        return false;
     }
 
     // ---- Bankroll Tests ----
@@ -79,15 +152,15 @@ contract ViperDoubleOrNothingTest is Test {
 
     function test_FundBankroll() public {
         uint256 fundAmt = 200 * 1e18;
-        token.mint(address(this), fundAmt);
-        token.approve(address(game), fundAmt);
+        usdg.mint(address(this), fundAmt);
+        usdg.approve(address(game), fundAmt);
 
         vm.expectEmit(true, false, false, true);
         emit BankrollFunded(address(this), fundAmt);
 
         game.fund(fundAmt);
         assertEq(game.bankroll(), INITIAL_BANKROLL + fundAmt);
-        assertEq(token.balanceOf(address(game)), INITIAL_BANKROLL + fundAmt);
+        assertEq(usdg.balanceOf(address(game)), INITIAL_BANKROLL + fundAmt);
     }
 
     function test_FundZeroReverts() public {
@@ -135,7 +208,7 @@ contract ViperDoubleOrNothingTest is Test {
         assertTrue(act);
 
         // Tokens pulled from ALICE
-        assertEq(token.balanceOf(ALICE), 500 * 1e18 - STAKE);
+        assertEq(usdg.balanceOf(ALICE), 500 * 1e18 - STAKE);
     }
 
     function test_DoubleCommitReverts() public {
@@ -201,10 +274,10 @@ contract ViperDoubleOrNothingTest is Test {
         assertEq(game.pendingWithdrawals(TREASURY), expectedFee);
 
         // ALICE claims winnings
-        uint256 aliceBalBefore = token.balanceOf(ALICE);
+        uint256 aliceBalBefore = usdg.balanceOf(ALICE);
         vm.prank(ALICE);
         game.claim();
-        assertEq(token.balanceOf(ALICE), aliceBalBefore + expectedPayout);
+        assertEq(usdg.balanceOf(ALICE), aliceBalBefore + expectedPayout);
         assertEq(game.pendingWithdrawals(ALICE), 0);
     }
 
@@ -291,7 +364,7 @@ contract ViperDoubleOrNothingTest is Test {
             game.pendingWithdrawals(TREASURY);
         uint256 expectedBankroll = INITIAL_BANKROLL - STAKE + STAKE; // Net zero change
         assertEq(game.bankroll(), expectedBankroll);
-        assertEq(token.balanceOf(address(game)), game.bankroll() + totalPending);
+        assertEq(usdg.balanceOf(address(game)), game.bankroll() + totalPending);
     }
 
     // ---- Double-Reveal Test ----
@@ -503,5 +576,107 @@ contract ViperDoubleOrNothingTest is Test {
         vm.prank(SESSION_KEY);
         vm.expectRevert("session expired");
         game.flipCommit(STAKE, commitment);
+    }
+
+    // ---- VIPER bonus tests ----
+
+    function test_WinCreditsViperBonus() public {
+        _winFlip(game, ALICE, STAKE);
+        assertEq(game.pendingViperBonus(ALICE), game.BONUS_PER_WIN());
+        assertEq(game.viperBonusOwed(), game.BONUS_PER_WIN());
+    }
+
+    function test_ClaimViper() public {
+        _winFlip(game, ALICE, STAKE);
+        uint256 bonus = game.BONUS_PER_WIN();
+
+        vm.prank(ALICE);
+        game.claimViper();
+        assertEq(viper.balanceOf(ALICE), bonus);
+        assertEq(game.pendingViperBonus(ALICE), 0);
+        assertEq(game.viperBonusOwed(), 0);
+
+        // Second claim reverts.
+        vm.prank(ALICE);
+        vm.expectRevert("nothing to claim");
+        game.claimViper();
+    }
+
+    function test_ClaimViperNothingReverts() public {
+        vm.prank(BOB);
+        vm.expectRevert("nothing to claim");
+        game.claimViper();
+    }
+
+    function test_FundViperEmitsAndZeroReverts() public {
+        uint256 amt = 1000e18;
+        viper.mint(address(this), amt);
+        viper.approve(address(game), amt);
+
+        vm.expectEmit(true, false, false, true);
+        emit ViperFunded(address(this), amt);
+        game.fundViper(amt);
+        assertEq(viper.balanceOf(address(game)), 1_000_000e18 + amt);
+
+        vm.expectRevert("zero amount");
+        game.fundViper(0);
+    }
+
+    function test_LoseCreditsNoViperBonus() public {
+        bytes32 secret = bytes32(uint256(888));
+        uint256 cBlock = block.number;
+
+        vm.roll(cBlock + 1);
+        vm.warp(block.timestamp + 2);
+        uint8 coin = game.getCoin(ALICE, secret, cBlock);
+        uint8 losingChoice = 1 - coin;
+
+        vm.roll(cBlock);
+        vm.warp(block.timestamp - 2);
+        vm.prank(ALICE);
+        game.flipCommit(STAKE, keccak256(abi.encodePacked(losingChoice, secret)));
+
+        vm.roll(cBlock + 1);
+        vm.warp(block.timestamp + 2);
+        vm.prank(ALICE);
+        game.flipReveal(losingChoice, secret);
+
+        assertEq(game.pendingViperBonus(ALICE), 0);
+        assertEq(game.viperBonusOwed(), 0);
+    }
+
+    /// @dev An empty VIPER reserve must never brick the game: the USDG prize
+    ///      is still credited and claimable, the bonus just degrades to a
+    ///      BonusShortfall event.
+    function test_WinDoesNotBrickWhenReserveEmpty() public {
+        ViperDoubleOrNothing game2 = new ViperDoubleOrNothing(
+            address(usdg), address(viper), TREASURY, REWARDS_POOL
+        );
+        // USDG bankroll only — no VIPER funding.
+        usdg.mint(address(this), INITIAL_BANKROLL);
+        usdg.approve(address(game2), INITIAL_BANKROLL);
+        game2.fund(INITIAL_BANKROLL);
+        vm.prank(ALICE);
+        usdg.approve(address(game2), type(uint256).max);
+
+        uint256 expectedPayout = (STAKE * 19) / 10;
+
+        vm.recordLogs();
+        _winFlip(game2, ALICE, STAKE);
+
+        // USDG prize still credited and claimable.
+        assertEq(game2.pendingWithdrawals(ALICE), expectedPayout);
+        uint256 balBefore = usdg.balanceOf(ALICE);
+        vm.prank(ALICE);
+        game2.claim();
+        assertEq(usdg.balanceOf(ALICE), balBefore + expectedPayout);
+
+        // No VIPER credited, and a BonusShortfall was emitted.
+        assertEq(game2.pendingViperBonus(ALICE), 0);
+        assertEq(game2.viperBonusOwed(), 0);
+        assertTrue(
+            _sawEvent(vm.getRecordedLogs(), keccak256("BonusShortfall(address,uint256,uint256)")),
+            "no BonusShortfall event"
+        );
     }
 }

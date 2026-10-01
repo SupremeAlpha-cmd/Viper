@@ -9,9 +9,11 @@ export interface BalanceChipProps {
   tokenDecimals: number;
   tokenSymbol: string;
   pendingWithdrawal: bigint;
+  pendingViperBonus: bigint;
   bankroll: bigint;
   maxStake: bigint;
   onClaim?: () => void;
+  onClaimViper?: () => void;
   claiming?: boolean;
   sessionActive?: boolean;
   onOpenSessionModal?: () => void;
@@ -23,9 +25,11 @@ export function BalanceChip({
   tokenDecimals,
   tokenSymbol,
   pendingWithdrawal,
+  pendingViperBonus,
   bankroll,
   maxStake,
   onClaim,
+  onClaimViper,
   claiming = false,
   sessionActive = false,
   onOpenSessionModal,
@@ -48,7 +52,7 @@ export function BalanceChip({
           <div
             className="flex items-center gap-2 rounded-xl border-2 px-3 py-1.5"
             style={{ borderColor: NAVY, background: "#f0fdf4" }}
-            title="Your VIPER token balance"
+            title="Your USDG balance"
           >
             <span className="text-sm">🪙</span>
             <div>
@@ -80,6 +84,32 @@ export function BalanceChip({
                 onClick={onClaim}
                 disabled={claiming}
                 className="font-pixel rounded-lg border-2 bg-[#22c55e] px-2.5 py-1 text-[9px] text-white transition hover:bg-[#16a34a] active:translate-y-0.5 disabled:opacity-50"
+                style={{ borderColor: NAVY }}
+              >
+                {claiming ? "CLAIMING…" : "CLAIM"}
+              </button>
+            </div>
+          )}
+
+          {/* VIPER Bonus Chip (Shown if > 0) */}
+          {pendingViperBonus > BigInt(0) && (
+            <div
+              className="flex items-center gap-2 rounded-xl border-2 px-3 py-1.5 animate-pulse"
+              style={{ borderColor: NAVY, background: "#ede9fe" }}
+            >
+              <div>
+                <p className="font-pixel text-[9px] uppercase tracking-wider text-violet-800">
+                  VIPER BONUS
+                </p>
+                <p className="font-pixel text-[11px] font-bold text-violet-900">
+                  +{formatTokens(pendingViperBonus, 18)} VIPER
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClaimViper}
+                disabled={claiming}
+                className="font-pixel rounded-lg border-2 bg-[#8b5cf6] px-2.5 py-1 text-[9px] text-white transition hover:bg-[#7c3aed] active:translate-y-0.5 disabled:opacity-50"
                 style={{ borderColor: NAVY }}
               >
                 {claiming ? "CLAIMING…" : "CLAIM"}

@@ -62,12 +62,13 @@ export function useChess() {
   const [pot, setPot] = useState<bigint>(BigInt(0));
   const [entryFee, setEntryFee] = useState<bigint>(BigInt(0));
   const [moveTimeout, setMoveTimeout] = useState<number>(300);
-  const [stakeToken, setStakeToken] = useState<`0x${string}` | null>(null);
+  const [usdg, setUsdg] = useState<`0x${string}` | null>(null);
   const [tokenSymbol, setTokenSymbol] = useState<string>("tokens");
   const [tokenDecimals, setTokenDecimals] = useState<number>(18);
   const [result, setResult] = useState<ChessResult | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] = useState<bigint>(BigInt(0));
+  const [pendingViperBonus, setPendingViperBonus] = useState<bigint>(BigInt(0));
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<SessionKey | null>(null);
   const [topUp, setTopUp] = useState<{ wei: bigint; moves: number } | null>(null);
@@ -104,11 +105,11 @@ export function useChess() {
         publicClient.getBlockNumber(),
         read<bigint>("entryFee"),
         read<bigint>("MOVE_TIMEOUT"),
-        read<`0x${string}`>("stakeToken"),
+        read<`0x${string}`>("usdg"),
       ]);
       setEntryFee(fee);
       setMoveTimeout(num(timeout));
-      setStakeToken(token);
+      setUsdg(token);
 
       // Whole match state in one call.
       const [
@@ -168,6 +169,13 @@ export function useChess() {
             args: [me],
           })) as bigint;
           setPendingWithdrawal(pw);
+          const pvb = (await publicClient.readContract({
+            address: VIPER_CHESS_ADDRESS,
+            abi: chessAbi,
+            functionName: "pendingViperBonus",
+            args: [me],
+          })) as bigint;
+          setPendingViperBonus(pvb);
         } catch { /* none */ }
       }
 
@@ -268,20 +276,20 @@ export function useChess() {
   );
 
   const ensureAllowance = useCallback(async () => {
-    if (!walletClient || !address || !publicClient || !stakeToken) return;
+    if (!walletClient || !address || !publicClient || !usdg) return;
     const allowance = (await publicClient.readContract({
-      address: stakeToken, abi: erc20Abi, functionName: "allowance",
+      address: usdg, abi: erc20Abi, functionName: "allowance",
       args: [address, VIPER_CHESS_ADDRESS],
     })) as bigint;
     if (allowance < entryFee) {
       const hash = await walletClient.writeContract({
-        address: stakeToken, abi: erc20Abi, functionName: "approve",
+        address: usdg, abi: erc20Abi, functionName: "approve",
         args: [VIPER_CHESS_ADDRESS, entryFee],
         account: address, chain: walletClient.chain,
       });
       await publicClient.waitForTransactionReceipt({ hash });
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee]);
+  }, [walletClient, address, publicClient, usdg, entryFee]);
 
   /** Join a side: 0 = white, 1 = black. */
   const join = useCallback(async (side: number) => {
@@ -347,6 +355,7 @@ export function useChess() {
   const resign = useCallback(() => write("resign", "resign"), [write]);
   const claimTimeout = useCallback(() => write("timeout", "claimTimeout"), [write]);
   const claimWinnings = useCallback(() => write("claim", "claim"), [write]);
+  const claimViperBonus = useCallback(() => write("claimViper", "claimViper"), [write]);
 
   const sessionSend = useCallback(
     async (fn: string, args: unknown[]) => {
@@ -410,9 +419,10 @@ export function useChess() {
     phase, matchId, sideToMove, board,
     whitePlayers, blackPlayers,
     lastFrom, lastTo, plyCount, moveDeadline, lobbyEndsAt, pot,
-    entryFee, moveTimeout, stakeToken, tokenSymbol, tokenDecimals,
+    entryFee, moveTimeout, usdg, tokenSymbol, tokenDecimals,
     result, pending, error,
     pendingWithdrawal,
+    pendingViperBonus, claimViperBonus,
     joined, mySide, myTurn,
     join, joinFast, startMatch, move, resign, claimTimeout, claimWinnings, sync,
     session,

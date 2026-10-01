@@ -30,6 +30,7 @@ export function DoubleOrNothingGame() {
     tokenBalance,
     tokenAllowance,
     pendingWithdrawal,
+    pendingViperBonus, claimViperBonus,
     currentBlock,
     activeFlip,
     lastResult,
@@ -112,9 +113,11 @@ export function DoubleOrNothingGame() {
         tokenDecimals={tokenDecimals}
         tokenSymbol={tokenSymbol}
         pendingWithdrawal={pendingWithdrawal}
+        pendingViperBonus={pendingViperBonus}
         bankroll={bankroll}
         maxStake={maxStake}
         onClaim={claim}
+        onClaimViper={claimViperBonus}
         sessionActive={sessionActive}
         onOpenSessionModal={() => setShowSessionModal(true)}
         onOpenRulesModal={() => setShowRules(true)}

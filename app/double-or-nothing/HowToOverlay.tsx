@@ -68,7 +68,7 @@ export function HowToOverlay({ isOpen: controlledOpen, onClose }: HowToOverlayPr
             <div>
               <p className="font-pixel text-[10px] font-bold">PICK & STAKE</p>
               <p className="mt-0.5 text-zinc-600 leading-relaxed">
-                Choose Heads or Tails and stake your VIPER. Max stake is capped at 10% of the bankroll to protect house solvency.
+                Choose Heads or Tails and stake USDG. Max stake is capped at 10% of the bankroll to protect house solvency. Win and you take 1.9x your stake — plus a 2,000 VIPER bonus.
               </p>
             </div>
           </div>

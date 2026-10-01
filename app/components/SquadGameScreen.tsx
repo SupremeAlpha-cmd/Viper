@@ -342,11 +342,11 @@ export function SquadGameScreen() {
         tagline="32 enter. One takes the pot."
         accent={RED}
         rules={[
-          "Stake VIPER to join the lobby — up to 32 players. The 60s countdown starts on first join.",
+          "Stake USDG to join the lobby — up to 32 players. The 60s countdown starts on first join.",
           "🟢 GREEN LIGHT: every round, check in before the timer hits zero. Miss the window and you're eliminated.",
           "🔴 RED LIGHT: the slowest quarter of check-ins is eliminated too — check in early, not just in time.",
           "Eliminated stakes stay in the pot — watch YOUR CUT IF YOU WIN grow with every elimination.",
-          "Last player standing takes the pot minus a 5% fee. If everyone ghosts the final round, the last batch splits it.",
+          "Last player standing takes the USDG pot minus a 5% fee, plus a 6,000 VIPER bonus. If everyone ghosts the final round, the last batch splits it.",
           "Fast join authorizes a session key — check-ins go through with zero wallet pop-ups. SPACE works too.",
         ]}
       />
@@ -355,7 +355,7 @@ export function SquadGameScreen() {
       <div className="mb-5 flex items-center justify-between gap-3">
         <BalanceChip
           game="squad-game"
-          stakeToken={v.stakeToken}
+          usdg={v.usdg}
           tokenSymbol={v.tokenSymbol}
           tokenDecimals={v.tokenDecimals}
           betweenMatches={v.phase === "lobby"}
@@ -383,6 +383,25 @@ export function SquadGameScreen() {
             style={{ background: RED }}
           >
             {v.pending === "claim" ? "CLAIMING…" : "CLAIM 💰"}
+          </button>
+        </div>
+      )}
+
+      {v.isConnected && v.pendingViperBonus > BigInt(0) && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border-2 border-[#3f1d24] p-5" style={{ background: BG }}>
+          <div>
+            <div className="font-pixel text-[10px] uppercase tracking-widest text-zinc-500">VIPER winner bonus</div>
+            <div className="font-pixel mt-2 text-xl" style={{ color: "#a78bfa" }}>
+              {formatTokens(v.pendingViperBonus, 18)} VIPER
+            </div>
+          </div>
+          <button
+            onClick={() => v.claimViperBonus().catch(() => {})}
+            disabled={v.pending !== null}
+            className="font-pixel rounded-2xl px-6 py-3 text-[11px] text-black transition active:scale-[0.98] disabled:opacity-40"
+            style={{ background: "#a78bfa" }}
+          >
+            {v.pending === "claimViper" ? "CLAIMING…" : "CLAIM ⚡"}
           </button>
         </div>
       )}

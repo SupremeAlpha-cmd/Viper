@@ -5,11 +5,14 @@ pragma solidity ^0.8.24;
 /// @notice Team board race on a 10x10 snakes & ladders board.
 ///         Teams: RED (0), BLUE (1), GREEN (2), YELLOW (3).
 ///         First team to reach or exceed square 100 wins.
-///         Winning team splits 95% of the total pot pro-rata by stake; 5% to treasury.
+///         Winning team splits 95% of the total USDG pot pro-rata by stake;
+///         5% to treasury. Each winner ALSO earns a pro-rata share of the
+///         fixed VIPER winner bonus from the rewards reserve.
 ///         Pull payments (claim pattern) & session keys matching ViperArena conventions.
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
@@ -26,9 +29,23 @@ contract ViperSnakesLadders {
     uint64 public constant MAX_SESSION_TTL = 1 days;
 
     // ---- Immutables ----
-    IERC20 public immutable stakeToken;
+    IERC20 public immutable usdg;
     uint256 public immutable entryFee;
     address public immutable treasury;
+
+    /// @notice VIPER token paying the fixed winner bonus (18 decimals).
+    IERC20 public immutable viper;
+    /// @notice Rewards-pool holder expected to fund the VIPER bonus reserve.
+    address public immutable rewardsPool;
+    /// @notice Fixed VIPER bonus per match win, split pro-rata by stake among
+    ///         the winning team's players. Not USD-pegged.
+    uint256 public constant BONUS_PER_WIN = 4000 * 1e18;
+
+    /// @notice VIPER bonuses credited but not yet claimed via claimViper().
+    mapping(address => uint256) public pendingViperBonus;
+    /// @notice Sum of all unclaimed VIPER bonuses. Invariant:
+    ///         viperBonusOwed <= viper.balanceOf(address(this)).
+    uint256 public viperBonusOwed;
 
     // ---- State ----
     uint256 public matchId;
@@ -72,6 +89,9 @@ contract ViperSnakesLadders {
     event TurnPassed(Team indexed team);
     event MatchWon(Team indexed team);
     event WithdrawalCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event ViperBonusCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event BonusShortfall(uint256 indexed matchId, address indexed to, uint256 needed, uint256 credited);
+    event ViperFunded(address indexed funder, uint256 amount);
     event SessionAuthorized(uint256 indexed matchId, address indexed player, address indexed sessionKey, uint64 expiry);
     event SessionRevoked(uint256 indexed matchId, address indexed player, address indexed sessionKey);
 
@@ -82,13 +102,47 @@ contract ViperSnakesLadders {
         _locked = false;
     }
 
-    constructor(address _stakeToken, uint256 _entryFee, address _treasury) {
-        require(_stakeToken != address(0) && _treasury != address(0), "zero addr");
+    constructor(
+        address _usdg,
+        address _viper,
+        uint256 _entryFee,
+        address _treasury,
+        address _rewardsPool
+    ) {
+        require(
+            _usdg != address(0) && _viper != address(0) &&
+            _treasury != address(0) && _rewardsPool != address(0),
+            "zero addr"
+        );
         require(_entryFee > 0, "zero entry fee");
-        stakeToken = IERC20(_stakeToken);
+        usdg = IERC20(_usdg);
+        viper = IERC20(_viper);
         entryFee = _entryFee;
         treasury = _treasury;
+        rewardsPool = _rewardsPool;
         _openLobby();
+    }
+
+    // ---- VIPER bonus reserve ----
+
+    /// @notice Top up the VIPER winner-bonus reserve (approve + transferFrom).
+    ///         In practice the rewards pool funds this; anyone may top up.
+    ///         A plain VIPER transfer to the contract works too.
+    function fundViper(uint256 amount) external nonReentrant {
+        require(amount > 0, "zero amount");
+        require(viper.transferFrom(msg.sender, address(this), amount), "fund transfer failed");
+        emit ViperFunded(msg.sender, amount);
+    }
+
+    /// @notice Claim credited VIPER winner bonuses. Pull-payment: balance
+    ///         zeroed BEFORE the transfer; a failing transfer only reverts
+    ///         the caller's own claim.
+    function claimViper() external nonReentrant {
+        uint256 amount = pendingViperBonus[msg.sender];
+        require(amount > 0, "nothing to claim");
+        pendingViperBonus[msg.sender] = 0;
+        viperBonusOwed -= amount;
+        require(viper.transfer(msg.sender, amount), "claim failed");
     }
 
     // ---- Board Definition (10x10 with 8 ladders and 8 snakes) ----
@@ -160,7 +214,7 @@ contract ViperSnakesLadders {
             require(block.timestamp < lobbyEndsAt, "lobby closed");
         }
 
-        require(stakeToken.transferFrom(msg.sender, address(this), amount), "fee failed");
+        require(usdg.transferFrom(msg.sender, address(this), amount), "fee failed");
 
         hasJoined[msg.sender] = true;
         playerTeam[msg.sender] = team;
@@ -317,6 +371,8 @@ contract ViperSnakesLadders {
                 uint256 share = (prize * stake) / winningTotalStake;
                 distributed += share;
                 _credit(p, share);
+                // VIPER bonus follows the same pro-rata-by-stake split.
+                _creditViper(p, (BONUS_PER_WIN * stake) / winningTotalStake);
             }
         }
 
@@ -333,12 +389,29 @@ contract ViperSnakesLadders {
         emit WithdrawalCredited(matchId, to, amount);
     }
 
-    /// @notice Claim accumulated pull payments.
+    /// @dev Credit a VIPER winner bonus from the rewards reserve. The credit
+    ///      is capped at the funded-but-unclaimed reserve: if the pool hasn't
+    ///      funded enough, the bonus degrades to a BonusShortfall event and
+    ///      the USDG game continues untouched. VIPER dust from splits stays
+    ///      in the contract as future bonus reserve.
+    function _creditViper(address to, uint256 amount) internal {
+        if (amount == 0) return;
+        uint256 bal = viper.balanceOf(address(this));
+        uint256 available = bal > viperBonusOwed ? bal - viperBonusOwed : 0;
+        uint256 credit = amount > available ? available : amount;
+        if (credit < amount) emit BonusShortfall(matchId, to, amount, credit);
+        if (credit == 0) return;
+        pendingViperBonus[to] += credit;
+        viperBonusOwed += credit;
+        emit ViperBonusCredited(matchId, to, credit);
+    }
+
+    /// @notice Claim accumulated USDG pull payments.
     function claim() external nonReentrant {
         uint256 amount = pendingWithdrawals[msg.sender];
         require(amount > 0, "nothing to claim");
         pendingWithdrawals[msg.sender] = 0;
-        require(stakeToken.transfer(msg.sender, amount), "claim failed");
+        require(usdg.transfer(msg.sender, amount), "claim failed");
     }
 
     function _openLobby() internal {

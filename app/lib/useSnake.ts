@@ -67,13 +67,14 @@ export function useSnake() {
   const [pot, setPot] = useState<bigint>(BigInt(0));
   const [aliveCount, setAliveCount] = useState<number>(0);
   const [entryFee, setEntryFee] = useState<bigint>(BigInt(0));
-  const [stakeToken, setStakeToken] = useState<`0x${string}` | null>(null);
+  const [usdg, setUsdg] = useState<`0x${string}` | null>(null);
   const [tokenSymbol, setTokenSymbol] = useState<string>("tokens");
   const [tokenDecimals, setTokenDecimals] = useState<number>(18);
   const [deaths, setDeaths] = useState<{ x: number; y: number; key: number }[]>([]);
   const [result, setResult] = useState<SnakeResult | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] = useState<bigint>(BigInt(0));
+  const [pendingViperBonus, setPendingViperBonus] = useState<bigint>(BigInt(0));
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<SessionKey | null>(null);
   const [topUp, setTopUp] = useState<{ wei: bigint; moves: number } | null>(null);
@@ -135,13 +136,13 @@ export function useSnake() {
         read<bigint>("pot"),
         read<bigint>("aliveCount"),
         read<bigint>("entryFee"),
-        read<`0x${string}`>("stakeToken"),
+        read<`0x${string}`>("usdg"),
         read<bigint>("MATCH_TICKS"),
       ]);
       setPot(potV);
       setAliveCount(num(aliveN));
       setEntryFee(fee);
-      setStakeToken(token);
+      setUsdg(token);
       setMatchTicks(num(ticks));
 
       if (ph === 0) {
@@ -198,6 +199,13 @@ export function useSnake() {
             args: [address],
           })) as bigint;
           setPendingWithdrawal(pw);
+          const pvb = (await publicClient.readContract({
+            address: VIPER_SNAKE_ADDRESS,
+            abi: snakeAbi,
+            functionName: "pendingViperBonus",
+            args: [address],
+          })) as bigint;
+          setPendingViperBonus(pvb);
         } catch { /* none */ }
       }
 
@@ -311,17 +319,17 @@ export function useSnake() {
   );
 
   const join = useCallback(async () => {
-    if (!walletClient || !address || !publicClient || !stakeToken) return;
+    if (!walletClient || !address || !publicClient || !usdg) return;
     setPending("join");
     setError(null);
     try {
       const allowance = (await publicClient.readContract({
-        address: stakeToken, abi: erc20Abi, functionName: "allowance",
+        address: usdg, abi: erc20Abi, functionName: "allowance",
         args: [address, VIPER_SNAKE_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
-          address: stakeToken, abi: erc20Abi, functionName: "approve",
+          address: usdg, abi: erc20Abi, functionName: "approve",
           args: [VIPER_SNAKE_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
@@ -333,10 +341,11 @@ export function useSnake() {
     } finally {
       setPending(null);
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee, write]);
+  }, [walletClient, address, publicClient, usdg, entryFee, write]);
 
   const startMatch = useCallback(() => write("start", "startMatch"), [write]);
   const claimWinnings = useCallback(() => write("claim", "claim"), [write]);
+  const claimViperBonus = useCallback(() => write("claimViper", "claimViper"), [write]);
   const poke = useCallback(() => write("poke", "poke"), [write]);
 
   const sessionSend = useCallback(
@@ -369,7 +378,7 @@ export function useSnake() {
   const setDirection = useCallback((dir: number) => sessionSend("setDirection", [dir]), [sessionSend]);
 
   const joinFast = useCallback(async () => {
-    if (!walletClient || !address || !publicClient || !stakeToken) return;
+    if (!walletClient || !address || !publicClient || !usdg) return;
     setPending("join");
     setError(null);
     try {
@@ -385,12 +394,12 @@ export function useSnake() {
         throw new Error("could not estimate gas — check the network and try again");
       }
       const allowance = (await publicClient.readContract({
-        address: stakeToken, abi: erc20Abi, functionName: "allowance",
+        address: usdg, abi: erc20Abi, functionName: "allowance",
         args: [address, VIPER_SNAKE_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
-          address: stakeToken, abi: erc20Abi, functionName: "approve",
+          address: usdg, abi: erc20Abi, functionName: "approve",
           args: [VIPER_SNAKE_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
@@ -421,7 +430,7 @@ export function useSnake() {
     } finally {
       setPending(null);
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee, sync, target]);
+  }, [walletClient, address, publicClient, usdg, entryFee, sync, target]);
 
   const revokeSession = useCallback(async () => {
     if (!session) return;
@@ -446,9 +455,10 @@ export function useSnake() {
     isConnected, address,
     phase, matchId, lobbyEndsAt, liveEndsAt, blockNumber, currentTick, matchTicks,
     players, coins, pot, aliveCount,
-    entryFee, stakeToken, tokenSymbol, tokenDecimals,
+    entryFee, usdg, tokenSymbol, tokenDecimals,
     deaths, result, pending, error,
     pendingWithdrawal,
+    pendingViperBonus, claimViperBonus,
     joined, myTurnAlive, me,
     join, joinFast, startMatch, setDirection, poke, claimWinnings, sync,
     session,

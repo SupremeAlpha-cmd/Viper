@@ -300,7 +300,7 @@ export function ChessScreen() {
         rules={[
           "Stake entry to sit on White ♔ or Black ♚ — anyone on your side may move on your team's turn.",
           "Full chess rules, minus castling and en passant. 5 minutes per move or your side forfeits.",
-          "Checkmate wins: the winning side splits the pot (5% fee). Stalemate or 50 quiet moves: everyone splits.",
+          "Checkmate wins: the winning side splits the USDG pot (5% fee) plus a 20,000 VIPER bonus. Stalemate or 50 quiet moves: everyone splits the pot (no bonus).",
           "Fast join gives you a session key — moves sign themselves, zero wallet pop-ups mid-game.",
         ]}
         accent={ACCENT}
@@ -309,7 +309,7 @@ export function ChessScreen() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <BalanceChip
           game="chess"
-          stakeToken={v.stakeToken}
+          usdg={v.usdg}
           tokenSymbol={v.tokenSymbol}
           tokenDecimals={v.tokenDecimals}
           betweenMatches={v.phase === "lobby"}
@@ -338,6 +338,19 @@ export function ChessScreen() {
           {v.pending === "claim"
             ? "CLAIMING…"
             : `CLAIM ${formatTokens(v.pendingWithdrawal, v.tokenDecimals)} ${v.tokenSymbol} →`}
+        </button>
+      )}
+
+      {v.pendingViperBonus > BigInt(0) && (
+        <button
+          onClick={() => v.claimViperBonus().catch(() => {})}
+          disabled={v.pending !== null}
+          className="font-pixel mt-4 w-full rounded-2xl py-4 text-xs text-white transition active:scale-[0.98] disabled:opacity-40"
+          style={{ background: "#8b5cf6" }}
+        >
+          {v.pending === "claimViper"
+            ? "CLAIMING…"
+            : `CLAIM ${formatTokens(v.pendingViperBonus, 18)} VIPER BONUS ⚡`}
         </button>
       )}
 

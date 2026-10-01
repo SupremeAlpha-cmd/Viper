@@ -5,20 +5,20 @@ import { useAccount, usePublicClient } from "wagmi";
 import { erc20Abi } from "../lib/snake";
 
 /**
- * BalanceChip — the VIPER balance, always visible while playing.
+ * BalanceChip — the USDG entry-token balance, always visible while playing.
  * Tracks session P&L per game (localStorage `viper-pnl-<game>`): the first
  * balance seen becomes the session baseline. Between matches, a -25% / -50%
  * drawdown surfaces the check-in card: keep going or top up?
  */
 export function BalanceChip({
   game,
-  stakeToken,
+  usdg,
   tokenSymbol,
   tokenDecimals,
   betweenMatches,
 }: {
   game: string;
-  stakeToken: `0x${string}` | null;
+  usdg: `0x${string}` | null;
   tokenSymbol: string;
   tokenDecimals: number;
   betweenMatches: boolean;
@@ -30,12 +30,12 @@ export function BalanceChip({
   const [dismissedAt, setDismissedAt] = useState<number>(0);
 
   useEffect(() => {
-    if (!publicClient || !stakeToken || !address) return;
+    if (!publicClient || !usdg || !address) return;
     let stop = false;
     const load = async () => {
       try {
         const bal = (await publicClient.readContract({
-          address: stakeToken,
+          address: usdg,
           abi: erc20Abi,
           functionName: "balanceOf",
           args: [address],
@@ -59,7 +59,7 @@ export function BalanceChip({
     load();
     const t = setInterval(load, 15000);
     return () => { stop = true; clearInterval(t); };
-  }, [publicClient, stakeToken, address, game]);
+  }, [publicClient, usdg, address, game]);
 
   if (balance === null || !address) return null;
 
@@ -84,7 +84,7 @@ export function BalanceChip({
     <>
       <div
         className="font-pixel inline-flex items-center gap-2 rounded-full border-2 border-[#1e293b] bg-[#0b1020] px-4 py-2 text-[10px] text-zinc-200"
-        title="Your VIPER balance"
+        title="Your USDG balance"
       >
         <span>🪙</span>
         <span>{fmt(balance)} {tokenSymbol}</span>

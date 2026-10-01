@@ -77,13 +77,14 @@ export function useViper() {
   const [pot, setPot] = useState<bigint>(BigInt(0));
   const [aliveCount, setAliveCount] = useState<number>(0);
   const [entryFee, setEntryFee] = useState<bigint>(BigInt(0));
-  const [stakeToken, setStakeToken] = useState<`0x${string}` | null>(null);
+  const [usdg, setUsdg] = useState<`0x${string}` | null>(null);
   const [tokenSymbol, setTokenSymbol] = useState<string>("tokens");
   const [tokenDecimals, setTokenDecimals] = useState<number>(18);
   const [flashes, setFlashes] = useState<Flash[]>([]);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] = useState<bigint>(BigInt(0));
+  const [pendingViperBonus, setPendingViperBonus] = useState<bigint>(BigInt(0));
   const [error, setError] = useState<string | null>(null);
   // Session-key fast play: public parts in state, the private key in a ref
   // (memory-only — never in state, never persisted).
@@ -154,12 +155,12 @@ export function useViper() {
         read<bigint>("pot"),
         read<bigint>("aliveCount"),
         read<bigint>("entryFee"),
-        read<`0x${string}`>("stakeToken"),
+        read<`0x${string}`>("usdg"),
       ]);
       setPot(potV);
       setAliveCount(num(aliveN));
       setEntryFee(fee);
-      setStakeToken(token);
+      setUsdg(token);
 
       if (ph === 0) {
         const ends = await read<bigint>("lobbyEndsAt");
@@ -233,6 +234,13 @@ export function useViper() {
             args: [address],
           }) as bigint;
           setPendingWithdrawal(pw);
+          const pvb = await publicClient.readContract({
+            address: VIPER_ARENA_ADDRESS,
+            abi: viperAbi,
+            functionName: "pendingViperBonus",
+            args: [address],
+          }) as bigint;
+          setPendingViperBonus(pvb);
         } catch { /* pre-pull-payment ABI / no balance */ }
       }
 
@@ -355,17 +363,17 @@ export function useViper() {
 
   /** Join the lobby: approves the entry fee first if needed. */
   const join = useCallback(async () => {
-    if (!walletClient || !address || !publicClient || !stakeToken) return;
+    if (!walletClient || !address || !publicClient || !usdg) return;
     setPending("join");
     setError(null);
     try {
       const allowance = (await publicClient.readContract({
-        address: stakeToken, abi: erc20Abi, functionName: "allowance",
+        address: usdg, abi: erc20Abi, functionName: "allowance",
         args: [address, VIPER_ARENA_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
-          address: stakeToken, abi: erc20Abi, functionName: "approve",
+          address: usdg, abi: erc20Abi, functionName: "approve",
           args: [VIPER_ARENA_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
@@ -377,11 +385,12 @@ export function useViper() {
     } finally {
       setPending(null);
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee, write]);
+  }, [walletClient, address, publicClient, usdg, entryFee, write]);
 
   const startMatch = useCallback(() => write("start", "startMatch"), [write]);
   /** Claim pull-payment winnings credited to the connected wallet. */
   const claimWinnings = useCallback(() => write("claim", "claim"), [write]);
+  const claimViperBonus = useCallback(() => write("claimViper", "claimViper"), [write]);
 
   const me = players.find(
     (p) => address && p.address.toLowerCase() === address.toLowerCase()
@@ -502,7 +511,7 @@ export function useViper() {
    * Entry costs ~3 wallet confirmations; everything after is popup-free.
    */
   const joinFast = useCallback(async () => {
-    if (!walletClient || !address || !publicClient || !stakeToken) return;
+    if (!walletClient || !address || !publicClient || !usdg) return;
     setPending("join");
     setError(null);
     try {
@@ -521,12 +530,12 @@ export function useViper() {
       }
       // 3. Entry-fee approval if needed (popup 1).
       const allowance = (await publicClient.readContract({
-        address: stakeToken, abi: erc20Abi, functionName: "allowance",
+        address: usdg, abi: erc20Abi, functionName: "allowance",
         args: [address, VIPER_ARENA_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
-          address: stakeToken, abi: erc20Abi, functionName: "approve",
+          address: usdg, abi: erc20Abi, functionName: "approve",
           args: [VIPER_ARENA_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
@@ -563,7 +572,7 @@ export function useViper() {
     } finally {
       setPending(null);
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee, sync]);
+  }, [walletClient, address, publicClient, usdg, entryFee, sync]);
 
   /** Revoke the session key on-chain (player or key can call). */
   const revokeSession = useCallback(async () => {
@@ -605,6 +614,7 @@ export function useViper() {
     entryFee, tokenSymbol, tokenDecimals,
     flashes, result, pending, error,
     pendingWithdrawal,
+    pendingViperBonus, claimViperBonus,
     joined, myTurnAlive, me, selfPos,
     join, joinFast, startMatch, move, movePath, plantBomb, poke, claimWinnings, sync,
     // Session-key fast play.

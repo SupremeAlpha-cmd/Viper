@@ -64,24 +64,68 @@ contract MockBlocklistToken {
     }
 }
 
+/// @notice 6-decimal mock USDG used as the games' stake token.
+contract MockUSDG {
+    uint8 public decimals = 6;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
+
+    function approve(address sp, uint256 amt) external returns (bool) {
+        allowance[msg.sender][sp] = amt;
+        return true;
+    }
+
+    function transfer(address to, uint256 amt) external returns (bool) {
+        require(balanceOf[msg.sender] >= amt, "bal");
+        balanceOf[msg.sender] -= amt;
+        balanceOf[to] += amt;
+        return true;
+    }
+
+    function transferFrom(address f, address t, uint256 amt) external returns (bool) {
+        require(balanceOf[f] >= amt && allowance[f][msg.sender] >= amt, "allow");
+        allowance[f][msg.sender] -= amt;
+        balanceOf[f] -= amt;
+        balanceOf[t] += amt;
+        return true;
+    }
+}
+
 contract ViperArenaTest is Test {
-    MockVIPER token;
+    MockUSDG usdg;
+    MockVIPER viper;
     ViperArena arena;
 
     address constant A = address(0xA);
     address constant B = address(0xB);
     address constant TREASURY = address(0x77);
+    address constant REWARDS_POOL = address(0x99);
     uint256 constant ENTRY = 100;
     uint256 constant FUSE = 30;
     uint256 constant MAX_BLOCKS = 3000;
 
     function setUp() public {
-        token = new MockVIPER();
-        arena = new ViperArena(address(token), ENTRY, TREASURY, FUSE, MAX_BLOCKS);
-        token.mint(A, 1000);
-        token.mint(B, 1000);
-        vm.prank(A); token.approve(address(arena), type(uint256).max);
-        vm.prank(B); token.approve(address(arena), type(uint256).max);
+        usdg = new MockUSDG();
+        viper = new MockVIPER();
+        arena = new ViperArena(address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, FUSE, MAX_BLOCKS);
+        usdg.mint(A, 1000);
+        usdg.mint(B, 1000);
+        vm.prank(A); usdg.approve(address(arena), type(uint256).max);
+        vm.prank(B); usdg.approve(address(arena), type(uint256).max);
+        // Fund the VIPER bonus reserve.
+        viper.mint(address(this), 1_000_000e18);
+        viper.approve(address(arena), 1_000_000e18);
+        arena.fundViper(1_000_000e18);
+    }
+
+    /// @dev Scan recorded logs for an event signature.
+    function _sawEvent(Vm.Log[] memory logs, bytes32 sig) internal pure returns (bool) {
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) return true;
+        }
+        return false;
     }
 
     function _joinTwoAndStart() internal {
@@ -108,7 +152,7 @@ contract ViperArenaTest is Test {
         arena.startMatch();
         // Refunds are pull-payment now: join, startMatch, then claim.
         vm.prank(A); arena.claim();
-        assertEq(token.balanceOf(A), 1000); // full refund
+        assertEq(usdg.balanceOf(A), 1000); // full refund
         assertEq(arena.matchId(), before + 1); // fresh lobby opened
         assertEq(uint8(arena.phase()), uint8(ViperArena.Phase.Lobby));
     }
@@ -139,9 +183,9 @@ contract ViperArenaTest is Test {
         // Winnings/fees are pull-payment now: winners claim after settlement.
         vm.prank(TREASURY); arena.claim();
         vm.prank(B); arena.claim();
-        assertEq(token.balanceOf(TREASURY), 10);
-        assertEq(token.balanceOf(B), 1000 - ENTRY + 190);
-        assertEq(token.balanceOf(A), 1000 - ENTRY);
+        assertEq(usdg.balanceOf(TREASURY), 10);
+        assertEq(usdg.balanceOf(B), 1000 - ENTRY + 190);
+        assertEq(usdg.balanceOf(A), 1000 - ENTRY);
     }
 
     function test_BombKillsAndWinnerTakesPot() public {
@@ -156,9 +200,9 @@ contract ViperArenaTest is Test {
         // Pot math: 200 in, 5% fee = 10, winner gets 190 (claimed pull-style).
         vm.prank(TREASURY); arena.claim();
         vm.prank(B); arena.claim();
-        assertEq(token.balanceOf(TREASURY), 10);
-        assertEq(token.balanceOf(B), 1000 - ENTRY + 190);
-        assertEq(token.balanceOf(A), 1000 - ENTRY); // dead, no prize
+        assertEq(usdg.balanceOf(TREASURY), 10);
+        assertEq(usdg.balanceOf(B), 1000 - ENTRY + 190);
+        assertEq(usdg.balanceOf(A), 1000 - ENTRY); // dead, no prize
         assertEq(uint8(arena.phase()), uint8(ViperArena.Phase.Lobby)); // next lobby
     }
 
@@ -170,20 +214,20 @@ contract ViperArenaTest is Test {
         vm.prank(A); arena.claim();
         vm.prank(B); arena.claim();
         vm.prank(TREASURY); arena.claim();
-        assertEq(token.balanceOf(A), 1000 - ENTRY + 95);
-        assertEq(token.balanceOf(B), 1000 - ENTRY + 95);
-        assertEq(token.balanceOf(TREASURY), 10);
+        assertEq(usdg.balanceOf(A), 1000 - ENTRY + 95);
+        assertEq(usdg.balanceOf(B), 1000 - ENTRY + 95);
+        assertEq(usdg.balanceOf(TREASURY), 10);
     }
 
     function test_SplitDustSweptToTreasury() public {
         // ENTRY=10 makes the fee inexact on a 3-way split: pot 30, fee 1,
         // 29 splits 3 ways -> 9 each, dust 2 -> swept to the treasury.
         address C = address(0xC);
-        ViperArena arena2 = new ViperArena(address(token), 10, TREASURY, FUSE, MAX_BLOCKS);
-        token.mint(C, 1000);
-        vm.prank(A); token.approve(address(arena2), type(uint256).max);
-        vm.prank(B); token.approve(address(arena2), type(uint256).max);
-        vm.prank(C); token.approve(address(arena2), type(uint256).max);
+        ViperArena arena2 = new ViperArena(address(usdg), address(viper), 10, TREASURY, REWARDS_POOL, FUSE, MAX_BLOCKS);
+        usdg.mint(C, 1000);
+        vm.prank(A); usdg.approve(address(arena2), type(uint256).max);
+        vm.prank(B); usdg.approve(address(arena2), type(uint256).max);
+        vm.prank(C); usdg.approve(address(arena2), type(uint256).max);
         vm.prank(A); arena2.join();
         vm.prank(B); arena2.join();
         vm.prank(C); arena2.join();
@@ -202,19 +246,19 @@ contract ViperArenaTest is Test {
         vm.prank(B); arena2.claim();
         vm.prank(C); arena2.claim();
         vm.prank(TREASURY); arena2.claim();
-        assertEq(token.balanceOf(A), 1000 - 10 + 9);
-        assertEq(token.balanceOf(B), 1000 - 10 + 9);
-        assertEq(token.balanceOf(C), 1000 - 10 + 9);
-        assertEq(token.balanceOf(TREASURY), 3);
+        assertEq(usdg.balanceOf(A), 1000 - 10 + 9);
+        assertEq(usdg.balanceOf(B), 1000 - 10 + 9);
+        assertEq(usdg.balanceOf(C), 1000 - 10 + 9);
+        assertEq(usdg.balanceOf(TREASURY), 3);
         // Nothing left locked in the arena.
-        assertEq(token.balanceOf(address(arena2)), 0);
+        assertEq(usdg.balanceOf(address(arena2)), 0);
     }
 
     function test_ChainDetonationKillsBothAndSplits() public {
         // Longer fuse so B can walk into blast range before A's bomb goes off.
-        ViperArena arena2 = new ViperArena(address(token), ENTRY, TREASURY, 20, MAX_BLOCKS);
-        vm.prank(A); token.approve(address(arena2), type(uint256).max);
-        vm.prank(B); token.approve(address(arena2), type(uint256).max);
+        ViperArena arena2 = new ViperArena(address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 20, MAX_BLOCKS);
+        vm.prank(A); usdg.approve(address(arena2), type(uint256).max);
+        vm.prank(B); usdg.approve(address(arena2), type(uint256).max);
         vm.prank(A); arena2.join();
         vm.prank(B); arena2.join();
         vm.warp(block.timestamp + 61);
@@ -248,9 +292,9 @@ contract ViperArenaTest is Test {
         vm.prank(A); arena2.claim();
         vm.prank(B); arena2.claim();
         vm.prank(TREASURY); arena2.claim();
-        assertEq(token.balanceOf(A), 1000 - ENTRY + 95);
-        assertEq(token.balanceOf(B), 1000 - ENTRY + 95);
-        assertEq(token.balanceOf(TREASURY), 10);
+        assertEq(usdg.balanceOf(A), 1000 - ENTRY + 95);
+        assertEq(usdg.balanceOf(B), 1000 - ENTRY + 95);
+        assertEq(usdg.balanceOf(TREASURY), 10);
     }
 
     function test_CannotMoveOntoLiveBomb() public {
@@ -337,8 +381,8 @@ contract ViperArenaTest is Test {
     // the old block-number batching all three merged and split 3 ways.
     function test_LazyDeathsBatchByDetonateAt() public {
         address C = address(0xC);
-        token.mint(C, 1000);
-        vm.prank(C); token.approve(address(arena), type(uint256).max);
+        usdg.mint(C, 1000);
+        vm.prank(C); usdg.approve(address(arena), type(uint256).max);
 
         vm.prank(A); arena.join();
         vm.prank(B); arena.join();
@@ -392,7 +436,7 @@ contract ViperArenaTest is Test {
         MockBlocklistToken bad = new MockBlocklistToken();
         bad.mint(A, 1000);
         bad.mint(B, 1000);
-        ViperArena arenaB = new ViperArena(address(bad), ENTRY, TREASURY, FUSE, MAX_BLOCKS);
+        ViperArena arenaB = new ViperArena(address(bad), address(viper), ENTRY, TREASURY, REWARDS_POOL, FUSE, MAX_BLOCKS);
         vm.prank(A); bad.approve(address(arenaB), type(uint256).max);
         vm.prank(B); bad.approve(address(arenaB), type(uint256).max);
         bad.setBlocklisted(A, true); // A can never receive a direct transfer
@@ -628,5 +672,89 @@ contract ViperArenaTest is Test {
         vm.prank(K); vm.expectRevert("no session"); arena.move(int8(1), int8(0));
         vm.prank(A); arena.move(int8(1), int8(0));
         assertEq(arena.px(A), 1);
+    }
+
+    // ---- VIPER bonus tests ----
+
+    event ViperFunded(address indexed funder, uint256 amount);
+    event ViperBonusCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event BonusShortfall(uint256 indexed matchId, address indexed to, uint256 needed, uint256 credited);
+
+    /// @dev Single winner: A dies in its own blast, B takes the full bonus.
+    function test_WinCreditsViperBonus() public {
+        _joinTwoAndStart();
+        vm.prank(A); arena.plantBomb();
+        vm.roll(block.number + FUSE + 1);
+        arena.poke();
+        assertEq(arena.pendingViperBonus(B), arena.BONUS_PER_WIN());
+        assertEq(arena.pendingViperBonus(A), 0, "dead player gets no bonus");
+        assertEq(arena.viperBonusOwed(), arena.BONUS_PER_WIN());
+    }
+
+    /// @dev Sudden-death split: the bonus splits equally like the prize.
+    function test_SuddenDeathSplitCreditsViperBonusEqually() public {
+        _joinTwoAndStart();
+        vm.roll(block.number + MAX_BLOCKS + 1);
+        arena.poke();
+        uint256 share = arena.BONUS_PER_WIN() / 2;
+        assertEq(arena.pendingViperBonus(A), share);
+        assertEq(arena.pendingViperBonus(B), share);
+        assertEq(arena.viperBonusOwed(), share * 2);
+    }
+
+    function test_ClaimViper() public {
+        _joinTwoAndStart();
+        vm.prank(A); arena.plantBomb();
+        vm.roll(block.number + FUSE + 1);
+        arena.poke(); // B wins
+        uint256 bonus = arena.BONUS_PER_WIN();
+        uint256 before = viper.balanceOf(B);
+        vm.prank(B);
+        arena.claimViper();
+        assertEq(viper.balanceOf(B), before + bonus);
+        assertEq(arena.pendingViperBonus(B), 0);
+        assertEq(arena.viperBonusOwed(), 0);
+        vm.prank(B);
+        vm.expectRevert("nothing to claim");
+        arena.claimViper();
+    }
+
+    function test_FundViperEmitsAndZeroReverts() public {
+        uint256 amt = 1000e18;
+        viper.mint(address(this), amt);
+        viper.approve(address(arena), amt);
+        vm.expectEmit(true, false, false, true);
+        emit ViperFunded(address(this), amt);
+        arena.fundViper(amt);
+        assertEq(viper.balanceOf(address(arena)), 1_000_000e18 + amt);
+        vm.expectRevert("zero amount");
+        arena.fundViper(0);
+    }
+
+    /// @dev An empty VIPER reserve never bricks settlement: the USDG split
+    ///      still pays out, bonuses degrade to BonusShortfall events.
+    function test_UnderfundedSplitStillPaysUsdg() public {
+        ViperArena poor = new ViperArena(
+            address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, FUSE, MAX_BLOCKS
+        );
+        vm.prank(A); usdg.approve(address(poor), type(uint256).max);
+        vm.prank(B); usdg.approve(address(poor), type(uint256).max);
+        vm.prank(A); poor.join();
+        vm.prank(B); poor.join();
+        vm.warp(block.timestamp + 61);
+        poor.startMatch();
+        vm.recordLogs();
+        vm.roll(block.number + MAX_BLOCKS + 1);
+        poor.poke(); // sudden death: both survive -> split
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(poor.pendingWithdrawals(A), 95, "USDG split still paid");
+        assertEq(poor.pendingWithdrawals(B), 95, "USDG split still paid");
+        assertEq(poor.pendingViperBonus(A), 0);
+        assertEq(poor.pendingViperBonus(B), 0);
+        assertEq(poor.viperBonusOwed(), 0);
+        assertTrue(
+            _sawEvent(logs, keccak256("BonusShortfall(uint256,address,uint256,uint256)")),
+            "no BonusShortfall event"
+        );
     }
 }

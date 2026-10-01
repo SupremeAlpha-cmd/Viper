@@ -215,6 +215,31 @@ export function GameScreen() {
         </Card>
       )}
 
+      {v.isConnected && v.pendingViperBonus > BigInt(0) && (
+        <Card className="mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div
+                className="font-pixel text-[10px] uppercase"
+                style={{ color: NAVY, letterSpacing: "0.25em", opacity: 0.7 }}
+              >
+                VIPER winner bonus
+              </div>
+              <div className="font-pixel mt-2 text-xl" style={{ color: "#8b5cf6" }}>
+                {formatTokens(v.pendingViperBonus, 18)}{" "}
+                VIPER
+              </div>
+            </div>
+            <ChunkyButton
+              onClick={() => v.claimViperBonus().catch(() => {})}
+              disabled={v.pending !== null}
+            >
+              {v.pending === "claimViper" ? "CLAIMING…" : "CLAIM ⚡"}
+            </ChunkyButton>
+          </div>
+        </Card>
+      )}
+
       {showResult && (
         <ResultBanner
           result={v.result!}

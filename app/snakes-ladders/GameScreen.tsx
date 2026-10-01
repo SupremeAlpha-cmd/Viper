@@ -28,10 +28,12 @@ export function SnakesLaddersGame() {
         <BalanceChip
           balance={sl.playerBalance}
           pendingWithdrawal={sl.pendingWithdrawal}
+          pendingViperBonus={sl.pendingViperBonus}
           tokenSymbol={sl.tokenSymbol}
           tokenDecimals={sl.tokenDecimals}
           isConnected={sl.isConnected}
           onClaim={() => sl.claimWinnings().catch(() => {})}
+          onClaimViper={() => sl.claimViperBonus().catch(() => {})}
           pending={sl.pending}
         />
 
@@ -57,7 +59,7 @@ export function SnakesLaddersGame() {
               {TEAM_META[sl.winner].name} WINS!
             </div>
             <p className="mt-2 text-xs font-semibold text-zinc-600">
-              Reached square 100! Winning team takes 95% of the pot!
+              Reached square 100! Winning team takes 95% of the USDG pot, plus a 4,000 VIPER bonus split by stake!
             </p>
 
             <div className="mt-4 rounded-xl border-2 bg-amber-50 p-3 text-xs" style={{ borderColor: NAVY }}>

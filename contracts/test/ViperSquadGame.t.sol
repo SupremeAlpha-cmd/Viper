@@ -36,8 +36,38 @@ contract SquadMockPass {
     function mint(address to) external { balanceOf[to] += 1; }
 }
 
+/// @notice 6-decimal mock USDG used as the games' stake token.
+contract MockUSDG {
+    uint8 public decimals = 6;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amt) external { balanceOf[to] += amt; }
+
+    function approve(address sp, uint256 amt) external returns (bool) {
+        allowance[msg.sender][sp] = amt;
+        return true;
+    }
+
+    function transfer(address to, uint256 amt) external returns (bool) {
+        require(balanceOf[msg.sender] >= amt, "bal");
+        balanceOf[msg.sender] -= amt;
+        balanceOf[to] += amt;
+        return true;
+    }
+
+    function transferFrom(address f, address t, uint256 amt) external returns (bool) {
+        require(balanceOf[f] >= amt && allowance[f][msg.sender] >= amt, "allow");
+        allowance[f][msg.sender] -= amt;
+        balanceOf[f] -= amt;
+        balanceOf[t] += amt;
+        return true;
+    }
+}
+
 contract ViperSquadGameTest is Test {
-    SquadMockToken token;
+    MockUSDG usdg;
+    SquadMockToken viper;
     SquadMockPass pass;
     ViperSquadGame game;
 
@@ -50,6 +80,7 @@ contract ViperSquadGameTest is Test {
     address constant G = address(0xA11CE);
     address constant H = address(0xBEEF);
     address constant TREASURY = address(0x77);
+    address constant REWARDS_POOL = address(0x99);
     uint256 constant ENTRY = 100;
     uint256 constant ROUND = 45;
 
@@ -57,27 +88,42 @@ contract ViperSquadGameTest is Test {
 
     function setUp() public {
         PS = [A, B, C, D, E, F, G, H];
-        token = new SquadMockToken();
+        usdg = new MockUSDG();
+        viper = new SquadMockToken();
         pass = new SquadMockPass();
-        game = new ViperSquadGame(address(token), ENTRY, TREASURY, 32, 2, ROUND, address(0), 0);
+        game = new ViperSquadGame(
+            address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 32, 2, ROUND, address(0), 0
+        );
         vm.roll(1000);
         vm.warp(100000);
         for (uint256 i = 0; i < 8; i++) {
-            token.mint(PS[i], 100000);
+            usdg.mint(PS[i], 100000);
             vm.prank(PS[i]);
-            token.approve(address(game), 100000);
+            usdg.approve(address(game), 100000);
         }
+        // Fund the VIPER bonus reserve.
+        viper.mint(address(this), 1_000_000e18);
+        viper.approve(address(game), 1_000_000e18);
+        game.fundViper(1_000_000e18);
+    }
+
+    /// @dev Scan recorded logs for an event signature.
+    function _sawEvent(Vm.Log[] memory logs, bytes32 sig) internal pure returns (bool) {
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == sig) return true;
+        }
+        return false;
     }
 
     // ---- helpers ----
 
     function _gameWithPass(uint256 _passFee) internal returns (ViperSquadGame) {
         ViperSquadGame g = new ViperSquadGame(
-            address(token), ENTRY, TREASURY, 32, 2, ROUND, address(pass), _passFee
+            address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 32, 2, ROUND, address(pass), _passFee
         );
         for (uint256 i = 0; i < 8; i++) {
             vm.prank(PS[i]);
-            token.approve(address(g), 100000);
+            usdg.approve(address(g), 100000);
         }
         return g;
     }
@@ -101,12 +147,12 @@ contract ViperSquadGameTest is Test {
 
     function testConstructorRejectsPassFeeAboveEntry() public {
         vm.expectRevert("pass fee > entry");
-        new ViperSquadGame(address(token), ENTRY, TREASURY, 32, 2, ROUND, address(pass), ENTRY + 1);
+        new ViperSquadGame(address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 32, 2, ROUND, address(pass), ENTRY + 1);
     }
 
     function testConstructorRejectsBadPlayerBounds() public {
         vm.expectRevert("bad player bounds");
-        new ViperSquadGame(address(token), ENTRY, TREASURY, 32, 33, ROUND, address(0), 0);
+        new ViperSquadGame(address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 32, 33, ROUND, address(0), 0);
     }
 
     // ---- lobby ----
@@ -116,7 +162,7 @@ contract ViperSquadGameTest is Test {
         game.join();
         assertEq(game.pot(), ENTRY);
         assertEq(game.paidFee(A), ENTRY);
-        assertEq(token.balanceOf(address(game)), ENTRY);
+        assertEq(usdg.balanceOf(address(game)), ENTRY);
     }
 
     function testPassHolderDiscount() public {
@@ -155,15 +201,15 @@ contract ViperSquadGameTest is Test {
     }
 
     function testLobbyFullReverts() public {
-        ViperSquadGame g = new ViperSquadGame(address(token), ENTRY, TREASURY, 2, 2, ROUND, address(0), 0);
+        ViperSquadGame g = new ViperSquadGame(address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 2, 2, ROUND, address(0), 0);
         for (uint256 i = 0; i < 2; i++) {
             vm.prank(PS[i]);
-            token.approve(address(g), 100000);
+            usdg.approve(address(g), 100000);
             vm.prank(PS[i]);
             g.join();
         }
         vm.prank(C);
-        token.approve(address(g), 100000);
+        usdg.approve(address(g), 100000);
         vm.prank(C);
         vm.expectRevert("lobby full");
         g.join();
@@ -193,10 +239,10 @@ contract ViperSquadGameTest is Test {
     }
 
     function testStartMatchRefundsWhenTooFew() public {
-        ViperSquadGame g = new ViperSquadGame(address(token), ENTRY, TREASURY, 32, 4, ROUND, address(0), 0);
+        ViperSquadGame g = new ViperSquadGame(address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 32, 4, ROUND, address(0), 0);
         for (uint256 i = 0; i < 2; i++) {
             vm.prank(PS[i]);
-            token.approve(address(g), 100000);
+            usdg.approve(address(g), 100000);
             vm.prank(PS[i]);
             g.join();
         }
@@ -374,10 +420,10 @@ contract ViperSquadGameTest is Test {
         _survive(B);
         vm.warp(block.timestamp + ROUND + 1);
         game.resolveRound();
-        uint256 before = token.balanceOf(A);
+        uint256 before = usdg.balanceOf(A);
         vm.prank(A);
         game.claim();
-        assertEq(token.balanceOf(A) - before, 2 * ENTRY - (2 * ENTRY * 500) / 10000);
+        assertEq(usdg.balanceOf(A) - before, 2 * ENTRY - (2 * ENTRY * 500) / 10000);
         assertEq(game.pendingWithdrawals(A), 0);
     }
 
@@ -472,5 +518,100 @@ contract ViperSquadGameTest is Test {
         assertEq(aliveCountOut, 3);
         assertEq(potOut, 3 * ENTRY);
         assertEq(checkInCountOut, 1);
+    }
+
+    // ---- VIPER bonus tests ----
+
+    event ViperFunded(address indexed funder, uint256 amount);
+    event ViperBonusCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event BonusShortfall(uint256 indexed matchId, address indexed to, uint256 needed, uint256 credited);
+
+    /// @dev Single winner: A out-survives B, takes the full bonus.
+    function test_WinCreditsViperBonus() public {
+        _joinStart(2);
+        _survive(A);
+        vm.warp(block.timestamp + 1);
+        _survive(B); // B is slower -> eliminated
+        vm.warp(block.timestamp + ROUND + 1);
+        game.resolveRound();
+        assertEq(game.pendingViperBonus(A), game.BONUS_PER_WIN());
+        assertEq(game.pendingViperBonus(B), 0, "eliminated player gets no bonus");
+        assertEq(game.viperBonusOwed(), game.BONUS_PER_WIN());
+    }
+
+    /// @dev All-AFK final batch: the bonus splits equally like the prize.
+    function test_AllAfkSplitCreditsViperBonusEqually() public {
+        _joinStart(4);
+        vm.warp(block.timestamp + ROUND + 1);
+        game.resolveRound(); // nobody checked in: final batch splits
+        uint256 share = game.BONUS_PER_WIN() / 4;
+        for (uint256 i = 0; i < 4; i++) {
+            assertEq(game.pendingViperBonus(PS[i]), share);
+        }
+        assertEq(game.viperBonusOwed(), share * 4);
+    }
+
+    function test_ClaimViper() public {
+        _joinStart(2);
+        _survive(A);
+        vm.warp(block.timestamp + 1);
+        _survive(B);
+        vm.warp(block.timestamp + ROUND + 1);
+        game.resolveRound(); // A wins
+        uint256 bonus = game.BONUS_PER_WIN();
+        uint256 before = viper.balanceOf(A);
+        vm.prank(A);
+        game.claimViper();
+        assertEq(viper.balanceOf(A), before + bonus);
+        assertEq(game.pendingViperBonus(A), 0);
+        assertEq(game.viperBonusOwed(), 0);
+        vm.prank(A);
+        vm.expectRevert("nothing to claim");
+        game.claimViper();
+    }
+
+    function test_FundViperEmitsAndZeroReverts() public {
+        uint256 amt = 1000e18;
+        viper.mint(address(this), amt);
+        viper.approve(address(game), amt);
+        vm.expectEmit(true, false, false, true);
+        emit ViperFunded(address(this), amt);
+        game.fundViper(amt);
+        assertEq(viper.balanceOf(address(game)), 1_000_000e18 + amt);
+        vm.expectRevert("zero amount");
+        game.fundViper(0);
+    }
+
+    /// @dev An empty VIPER reserve never bricks settlement: the USDG split
+    ///      still pays out, bonuses degrade to BonusShortfall events.
+    function test_UnderfundedSplitStillPaysUsdg() public {
+        ViperSquadGame poor = new ViperSquadGame(
+            address(usdg), address(viper), ENTRY, TREASURY, REWARDS_POOL, 32, 2, ROUND, address(0), 0
+        );
+        for (uint256 i = 0; i < 4; i++) {
+            vm.prank(PS[i]);
+            usdg.approve(address(poor), 100000);
+        }
+        for (uint256 i = 0; i < 4; i++) {
+            vm.prank(PS[i]);
+            poor.join();
+        }
+        vm.warp(block.timestamp + 61);
+        poor.startMatch();
+        vm.recordLogs();
+        vm.warp(block.timestamp + ROUND + 1);
+        poor.resolveRound(); // all AFK: final batch splits equally
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 fee = (4 * ENTRY * 500) / 10000; // 20
+        uint256 share = (4 * ENTRY - fee) / 4; // 95
+        for (uint256 i = 0; i < 4; i++) {
+            assertEq(poor.pendingWithdrawals(PS[i]), share, "USDG split still paid");
+            assertEq(poor.pendingViperBonus(PS[i]), 0);
+        }
+        assertEq(poor.viperBonusOwed(), 0);
+        assertTrue(
+            _sawEvent(logs, keccak256("BonusShortfall(uint256,address,uint256,uint256)")),
+            "no BonusShortfall event"
+        );
     }
 }

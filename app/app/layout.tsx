@@ -16,12 +16,12 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://viper-blast.xyz"),
   title: "Viper — on-chain arcade",
   description:
-    "Viper is an on-chain arcade on Robinhood Chain. Snake, Bomber Arena, Chess, Snakes & Ladders and more — one VIPER token, winner takes the pot.",
+    "Viper is an on-chain arcade on Robinhood Chain. Snake, Bomber Arena, Chess, Snakes & Ladders and more — stake USDG, winner takes the pot plus a VIPER bonus.",
   icons: { icon: "/logo.png" },
   openGraph: {
     title: "Viper — on-chain arcade",
     description:
-      "Six games. One VIPER token. Stake it, outplay everyone, and take the pot — every match settled on-chain.",
+      "Six games. One arcade. Stake USDG, outplay everyone, and take the pot — plus a VIPER bonus on every win.",
     images: ["/opengraph-image.png"],
   },
 };

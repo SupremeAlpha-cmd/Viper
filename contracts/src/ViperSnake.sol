@@ -12,11 +12,13 @@ pragma solidity ^0.8.24;
 ///         browser-held key once, then turns go through it with zero
 ///         wallet pop-ups (same SessionAuth pattern as ViperArena).
 ///
-///         Staked in VIPER. Timed 60s lobbies -> live match -> last snake
-///         alive takes the pot (5% protocol fee). Timeout -> score-weighted
-///         split. Simultaneous final deaths -> last batch splits.
+///         Entry fees in USDG. Timed 60s lobbies -> live match -> last snake
+///         alive takes the pot (5% protocol fee) PLUS the fixed VIPER winner
+///         bonus. Timeout -> score-weighted split (bonus follows the same
+///         split). Simultaneous final deaths -> last batch splits.
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
@@ -37,9 +39,24 @@ contract ViperSnake {
     ///      step (~1s).
     uint256 public immutable MATCH_TICKS;
 
-    IERC20 public immutable stakeToken;
+    IERC20 public immutable usdg;
     uint256 public immutable entryFee;
     address public immutable treasury;
+
+    /// @notice VIPER token paying the fixed winner bonus (18 decimals).
+    IERC20 public immutable viper;
+    /// @notice Rewards-pool holder expected to fund the VIPER bonus reserve.
+    address public immutable rewardsPool;
+    /// @notice Fixed VIPER bonus per match win. Single winner takes it all;
+    ///         split outcomes divide it the same way the USDG prize is split.
+    ///         Not USD-pegged.
+    uint256 public constant BONUS_PER_WIN = 4000 * 1e18;
+
+    /// @notice VIPER bonuses credited but not yet claimed via claimViper().
+    mapping(address => uint256) public pendingViperBonus;
+    /// @notice Sum of all unclaimed VIPER bonuses. Invariant:
+    ///         viperBonusOwed <= viper.balanceOf(address(this)).
+    uint256 public viperBonusOwed;
 
     enum Phase { Lobby, Live }
 
@@ -112,6 +129,9 @@ contract ViperSnake {
     event PotSplitWeighted(uint256 indexed matchId, uint256 recipients);
     event Refunded(uint256 indexed matchId, address indexed player, uint256 amount);
     event WithdrawalCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event ViperBonusCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event BonusShortfall(uint256 indexed matchId, address indexed to, uint256 needed, uint256 credited);
+    event ViperFunded(address indexed funder, uint256 amount);
     event SessionAuthorized(uint256 indexed matchId, address indexed player, address indexed sessionKey, uint64 expiry);
     event SessionRevoked(uint256 indexed matchId, address indexed player, address indexed sessionKey);
 
@@ -123,18 +143,48 @@ contract ViperSnake {
     }
 
     constructor(
-        address _stakeToken,
+        address _usdg,
+        address _viper,
         uint256 _entryFee,
         address _treasury,
+        address _rewardsPool,
         uint256 _matchTicks
     ) {
-        require(_stakeToken != address(0) && _treasury != address(0), "zero addr");
+        require(
+            _usdg != address(0) && _viper != address(0) &&
+            _treasury != address(0) && _rewardsPool != address(0),
+            "zero addr"
+        );
         require(_entryFee > 0 && _matchTicks > 0, "zero param");
-        stakeToken = IERC20(_stakeToken);
+        usdg = IERC20(_usdg);
+        viper = IERC20(_viper);
         entryFee = _entryFee;
         treasury = _treasury;
+        rewardsPool = _rewardsPool;
         MATCH_TICKS = _matchTicks;
         _openLobby();
+    }
+
+    // ---- VIPER bonus reserve ----
+
+    /// @notice Top up the VIPER winner-bonus reserve (approve + transferFrom).
+    ///         In practice the rewards pool funds this; anyone may top up.
+    ///         A plain VIPER transfer to the contract works too.
+    function fundViper(uint256 amount) external nonReentrant {
+        require(amount > 0, "zero amount");
+        require(viper.transferFrom(msg.sender, address(this), amount), "fund transfer failed");
+        emit ViperFunded(msg.sender, amount);
+    }
+
+    /// @notice Claim credited VIPER winner bonuses. Pull-payment: balance
+    ///         zeroed BEFORE the transfer; a failing transfer only reverts
+    ///         the caller's own claim.
+    function claimViper() external nonReentrant {
+        uint256 amount = pendingViperBonus[msg.sender];
+        require(amount > 0, "nothing to claim");
+        pendingViperBonus[msg.sender] = 0;
+        viperBonusOwed -= amount;
+        require(viper.transfer(msg.sender, amount), "claim failed");
     }
 
     // ---- Lobby ----
@@ -166,7 +216,7 @@ contract ViperSnake {
         } else {
             require(block.timestamp < lobbyEndsAt, "lobby closed");
         }
-        require(stakeToken.transferFrom(msg.sender, address(this), entryFee), "fee failed");
+        require(usdg.transferFrom(msg.sender, address(this), entryFee), "fee failed");
 
         joined[msg.sender] = true;
         players.push(msg.sender);
@@ -254,14 +304,14 @@ contract ViperSnake {
         _settle();
     }
 
-    /// @notice Pull-payment: withdraw credited winnings, splits, refunds or
+    /// @notice Pull-payment: withdraw credited USDG winnings, splits, refunds or
     ///         fees. Balance zeroed BEFORE the transfer; a failing transfer
     ///         only reverts the caller's own claim.
     function claim() external nonReentrant {
         uint256 amount = pendingWithdrawals[msg.sender];
         require(amount > 0, "nothing to claim");
         pendingWithdrawals[msg.sender] = 0;
-        require(stakeToken.transfer(msg.sender, amount), "claim failed");
+        require(usdg.transfer(msg.sender, amount), "claim failed");
     }
 
     /// @notice Revoke a session key. Callable by the player who authorized
@@ -301,6 +351,23 @@ contract ViperSnake {
         if (amount == 0) return;
         pendingWithdrawals[to] += amount;
         emit WithdrawalCredited(matchId, to, amount);
+    }
+
+    /// @dev Credit a VIPER winner bonus from the rewards reserve. The credit
+    ///      is capped at the funded-but-unclaimed reserve: if the pool hasn't
+    ///      funded enough, the bonus degrades to a BonusShortfall event and
+    ///      the USDG game continues untouched. VIPER dust from splits stays
+    ///      in the contract as future bonus reserve.
+    function _creditViper(address to, uint256 amount) internal {
+        if (amount == 0) return;
+        uint256 bal = viper.balanceOf(address(this));
+        uint256 available = bal > viperBonusOwed ? bal - viperBonusOwed : 0;
+        uint256 credit = amount > available ? available : amount;
+        if (credit < amount) emit BonusShortfall(matchId, to, amount, credit);
+        if (credit == 0) return;
+        pendingViperBonus[to] += credit;
+        viperBonusOwed += credit;
+        emit ViperBonusCredited(matchId, to, credit);
     }
 
     function _openLobby() internal {
@@ -602,6 +669,7 @@ contract ViperSnake {
             emit MatchEnded(matchId, winner, prize);
             _credit(treasury, fee);
             _credit(winner, prize);
+            _creditViper(winner, BONUS_PER_WIN);
             _openLobby();
         } else if (aliveCount == 0) {
             // Simultaneous final deaths: the last batch splits it equally.
@@ -619,11 +687,14 @@ contract ViperSnake {
         uint256 fee = (pot * FEE_BPS) / 10000;
         uint256 share = (pot - fee) / n;
         uint256 dust = (pot - fee) % n;
+        // VIPER bonus follows the same equal split (dust stays as reserve).
+        uint256 bonusShare = BONUS_PER_WIN / n;
         emit PotSplit(matchId, n, share);
         _credit(treasury, fee);
         _credit(treasury, dust);
         for (uint256 i = 0; i < n; i++) {
             _credit(recipients[i], share);
+            _creditViper(recipients[i], bonusShare);
         }
         _openLobby();
     }
@@ -645,9 +716,13 @@ contract ViperSnake {
             // Nobody scored: fall back to an equal split.
             uint256 share = distributable / n;
             uint256 dust = distributable % n;
+            uint256 bonusShare = BONUS_PER_WIN / n;
             _credit(treasury, dust);
             for (uint256 i = 0; i < players.length; i++) {
-                if (alive[players[i]]) _credit(players[i], share);
+                if (alive[players[i]]) {
+                    _credit(players[i], share);
+                    _creditViper(players[i], bonusShare);
+                }
             }
             emit PotSplit(matchId, n, share);
         } else {
@@ -657,6 +732,7 @@ contract ViperSnake {
                 if (alive[p]) {
                     uint256 share = (distributable * score[p]) / totalScore;
                     _credit(p, share);
+                    _creditViper(p, (BONUS_PER_WIN * score[p]) / totalScore);
                     paid += share;
                 }
             }

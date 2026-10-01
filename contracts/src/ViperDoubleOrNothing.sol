@@ -3,19 +3,23 @@ pragma solidity ^0.8.24;
 
 /// @title ViperDoubleOrNothing — solo vs the house coin flip
 /// @notice Simplest game in the Viper arcade.
-///         1. Player stakes VIPER and commits to a hidden choice: keccak256(choice, secret).
+///         1. Player stakes USDG and commits to a hidden choice: keccak256(choice, secret).
 ///         2. Player reveals within 50 blocks: flipReveal(choice, secret). Contract flips a fair coin.
-///         3. Win -> payout 1.9x stake (2x minus 5% arcade fee), paid from bankroll. Lose -> stake goes to bankroll.
+///         3. Win -> payout 1.9x stake in USDG (2x minus 5% arcade fee), paid from the USDG
+///            bankroll, PLUS a fixed VIPER winner bonus from the rewards reserve.
+///            Lose -> stake goes to bankroll.
 ///         4. No reveal in 50 blocks -> stake reclaimable via refund().
 ///
 /// Conventions:
-///  - VIPER entry via approve+transferFrom
-///  - 5% treasury fee on wins
+///  - USDG entry via approve+transferFrom (6 decimals)
+///  - 5% treasury fee on wins, paid in USDG
+///  - Fixed VIPER bonus per win, pull-claimed via claimViper()
 ///  - Pull-payment claims (SEC-03 pattern from ViperArena)
 ///  - No owner/admin privileges
 ///  - Self-funded session keys (commit + reveal with zero pop-ups after one auth)
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
@@ -26,10 +30,25 @@ contract ViperDoubleOrNothing {
     uint256 public constant MAX_STAKE_BPS = 1000; // 10% of bankroll
     uint64 public constant MAX_SESSION_TTL = 1 days;
 
-    IERC20 public immutable stakeToken;
+    IERC20 public immutable usdg;
     address public immutable treasury;
 
+    /// @notice VIPER token paying the fixed winner bonus (18 decimals).
+    IERC20 public immutable viper;
+    /// @notice Rewards-pool holder expected to fund the VIPER bonus reserve.
+    ///         Informational/on-chain record: funding itself is permissionless
+    ///         (fundViper or a plain VIPER transfer).
+    address public immutable rewardsPool;
+    /// @notice Fixed VIPER bonus paid to the winner of each flip. Not USD-pegged.
+    uint256 public constant BONUS_PER_WIN = 2000 * 1e18;
+
     uint256 public bankroll;
+
+    /// @notice VIPER bonuses credited but not yet claimed via claimViper().
+    mapping(address => uint256) public pendingViperBonus;
+    /// @notice Sum of all unclaimed VIPER bonuses. Invariant:
+    ///         viperBonusOwed <= viper.balanceOf(address(this)).
+    uint256 public viperBonusOwed;
 
     struct Flip {
         bytes32 commitment;
@@ -54,6 +73,9 @@ contract ViperDoubleOrNothing {
     event FlipCommitted(address indexed player, bytes32 commitment, uint256 stake);
     event FlipRevealed(address indexed player, bool won, uint256 payout);
     event BankrollFunded(address indexed funder, uint256 amount);
+    event ViperFunded(address indexed funder, uint256 amount);
+    event ViperBonusCredited(address indexed to, uint256 amount);
+    event BonusShortfall(address indexed to, uint256 needed, uint256 credited);
     event Refunded(address indexed player, uint256 amount);
     event WithdrawalCredited(address indexed to, uint256 amount);
     event SessionAuthorized(address indexed player, address indexed sessionKey, uint64 expiry);
@@ -66,20 +88,48 @@ contract ViperDoubleOrNothing {
         _locked = false;
     }
 
-    constructor(address _stakeToken, address _treasury) {
-        require(_stakeToken != address(0) && _treasury != address(0), "zero addr");
-        stakeToken = IERC20(_stakeToken);
+    constructor(address _usdg, address _viper, address _treasury, address _rewardsPool) {
+        require(
+            _usdg != address(0) && _viper != address(0) &&
+            _treasury != address(0) && _rewardsPool != address(0),
+            "zero addr"
+        );
+        usdg = IERC20(_usdg);
+        viper = IERC20(_viper);
         treasury = _treasury;
+        rewardsPool = _rewardsPool;
     }
 
-    // ---- Bankroll ----
+    // ---- Bankroll (USDG) ----
 
-    /// @notice Anyone can top up the bankroll (house liquidity).
+    /// @notice Anyone can top up the bankroll (house liquidity), in USDG.
     function fund(uint256 amount) external nonReentrant {
         require(amount > 0, "zero amount");
-        require(stakeToken.transferFrom(msg.sender, address(this), amount), "fund transfer failed");
+        require(usdg.transferFrom(msg.sender, address(this), amount), "fund transfer failed");
         bankroll += amount;
         emit BankrollFunded(msg.sender, amount);
+    }
+
+    // ---- VIPER bonus reserve ----
+
+    /// @notice Top up the VIPER winner-bonus reserve (approve + transferFrom).
+    ///         In practice the rewards pool funds this; anyone may top up.
+    ///         A plain VIPER transfer to the contract works too.
+    function fundViper(uint256 amount) external nonReentrant {
+        require(amount > 0, "zero amount");
+        require(viper.transferFrom(msg.sender, address(this), amount), "fund transfer failed");
+        emit ViperFunded(msg.sender, amount);
+    }
+
+    /// @notice Claim credited VIPER winner bonuses. Pull-payment: balance
+    ///         zeroed BEFORE the transfer; a failing transfer only reverts
+    ///         the caller's own claim.
+    function claimViper() external nonReentrant {
+        uint256 amount = pendingViperBonus[msg.sender];
+        require(amount > 0, "nothing to claim");
+        pendingViperBonus[msg.sender] = 0;
+        viperBonusOwed -= amount;
+        require(viper.transfer(msg.sender, amount), "claim failed");
     }
 
     /// @notice Maximum allowed stake per flip (10% of bankroll).
@@ -119,7 +169,7 @@ contract ViperDoubleOrNothing {
         require(stake > 0, "zero stake");
         require(stake <= maxStake(), "stake exceeds max");
 
-        require(stakeToken.transferFrom(player, address(this), stake), "stake transfer failed");
+        require(usdg.transferFrom(player, address(this), stake), "stake transfer failed");
 
         flips[player] = Flip({
             commitment: commitment,
@@ -164,6 +214,7 @@ contract ViperDoubleOrNothing {
 
             _credit(player, payout);
             _credit(treasury, fee);
+            _creditViper(player, BONUS_PER_WIN);
         } else {
             bankroll += f.stake;
         }
@@ -194,14 +245,14 @@ contract ViperDoubleOrNothing {
 
     // ---- Pull-Payment Claims ----
 
-    /// @notice Withdraw credited winnings or refunds.
+    /// @notice Withdraw credited USDG winnings or refunds.
     ///         Checks-effects-interactions: zero balance before transfer.
     ///         Callable only by the wallet directly (session keys cannot claim).
     function claim() external nonReentrant {
         uint256 amount = pendingWithdrawals[msg.sender];
         require(amount > 0, "nothing to claim");
         pendingWithdrawals[msg.sender] = 0;
-        require(stakeToken.transfer(msg.sender, amount), "claim failed");
+        require(usdg.transfer(msg.sender, amount), "claim failed");
     }
 
     // ---- Session Keys ----
@@ -249,6 +300,23 @@ contract ViperDoubleOrNothing {
         if (amount == 0) return;
         pendingWithdrawals[to] += amount;
         emit WithdrawalCredited(to, amount);
+    }
+
+    /// @dev Credit a VIPER winner bonus from the rewards reserve. The credit
+    ///      is capped at the funded-but-unclaimed reserve: if the pool hasn't
+    ///      funded enough, the bonus degrades to a BonusShortfall event and
+    ///      the USDG game continues untouched. Integer-division dust is never
+    ///      created here (single winner takes the whole bonus).
+    function _creditViper(address to, uint256 amount) internal {
+        if (amount == 0) return;
+        uint256 bal = viper.balanceOf(address(this));
+        uint256 available = bal > viperBonusOwed ? bal - viperBonusOwed : 0;
+        uint256 credit = amount > available ? available : amount;
+        if (credit < amount) emit BonusShortfall(to, amount, credit);
+        if (credit == 0) return;
+        pendingViperBonus[to] += credit;
+        viperBonusOwed += credit;
+        emit ViperBonusCredited(to, credit);
     }
 
     function _flipCoin(address player, bytes32 secret, uint256 commitBlock) internal view returns (uint8) {

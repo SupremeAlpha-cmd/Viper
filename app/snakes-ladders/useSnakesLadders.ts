@@ -122,11 +122,12 @@ export function useSnakesLadders() {
   });
   const [pot, setPot] = useState<bigint>(BigInt(0));
   const [entryFee, setEntryFee] = useState<bigint>(BigInt(100) * BigInt(10 ** 18));
-  const [stakeToken, setStakeToken] = useState<`0x${string}` | null>(null);
-  const [tokenSymbol, setTokenSymbol] = useState<string>("VIPER");
+  const [usdg, setUsdg] = useState<`0x${string}` | null>(null);
+  const [tokenSymbol, setTokenSymbol] = useState<string>("USDG");
   const [tokenDecimals, setTokenDecimals] = useState<number>(18);
   const [playerBalance, setPlayerBalance] = useState<bigint>(BigInt(0));
   const [pendingWithdrawal, setPendingWithdrawal] = useState<bigint>(BigInt(0));
+  const [pendingViperBonus, setPendingViperBonus] = useState<bigint>(BigInt(0));
 
   // User status
   const [hasJoined, setHasJoined] = useState<boolean>(false);
@@ -189,7 +190,7 @@ export function useSnakesLadders() {
         publicClient.getBlockNumber(),
         read<[number, bigint, number, bigint, [number, number, number, number], [bigint, bigint, bigint, bigint], bigint, bigint]>("getMatchState"),
         read<bigint>("entryFee"),
-        read<`0x${string}`>("stakeToken"),
+        read<`0x${string}`>("usdg"),
       ]);
 
       const [curPhase, mid, actTurn, turnBlk, posArr, stakeArr, totalPot, lobbyEnd] = matchState;
@@ -218,7 +219,7 @@ export function useSnakesLadders() {
       setPot(totalPot);
       setLobbyEndsAt(num(lobbyEnd));
       setEntryFee(fee);
-      setStakeToken(token);
+      setUsdg(token);
 
       // Fetch team player lists
       const [redP, blueP, greenP, yellowP] = await Promise.all([
@@ -250,11 +251,12 @@ export function useSnakesLadders() {
       // Wallet state: token balance & pull-payment pending withdrawals
       if (address) {
         try {
-          const [joinedState, playerTm, stakeAmount, pw, bal] = await Promise.all([
+          const [joinedState, playerTm, stakeAmount, pw, pvb, bal] = await Promise.all([
             read<boolean>("hasJoined", [address]),
             read<number>("playerTeam", [address]),
             read<bigint>("playerStake", [address]),
             read<bigint>("pendingWithdrawals", [address]),
+            read<bigint>("pendingViperBonus", [address]),
             token
               ? (publicClient.readContract({
                   address: token,
@@ -277,6 +279,7 @@ export function useSnakesLadders() {
           setMyTeam(joinedState ? (playerTm as Team) : null);
           setMyStake(stakeAmount);
           setPendingWithdrawal(pw);
+          setPendingViperBonus(pvb);
           setPlayerBalance(bal);
         } catch {}
       }
@@ -382,13 +385,13 @@ export function useSnakesLadders() {
   /** Standard join with wallet */
   const join = useCallback(
     async (team: Team, customAmount?: bigint) => {
-      if (!walletClient || !address || !publicClient || !stakeToken) return;
+      if (!walletClient || !address || !publicClient || !usdg) return;
       const amount = customAmount && customAmount >= entryFee ? customAmount : entryFee;
       setPending("join");
       setError(null);
       try {
         const allowance = (await publicClient.readContract({
-          address: stakeToken,
+          address: usdg,
           abi: erc20Abi,
           functionName: "allowance",
           args: [address, VIPER_SL_ADDRESS],
@@ -396,7 +399,7 @@ export function useSnakesLadders() {
 
         if (allowance < amount) {
           const hash = await walletClient.writeContract({
-            address: stakeToken,
+            address: usdg,
             abi: erc20Abi,
             functionName: "approve",
             args: [VIPER_SL_ADDRESS, amount],
@@ -413,13 +416,13 @@ export function useSnakesLadders() {
         setPending(null);
       }
     },
-    [walletClient, address, publicClient, stakeToken, entryFee, write]
+    [walletClient, address, publicClient, usdg, entryFee, write]
   );
 
   /** Fast join: approve + joinWithSession + native top-up for 0-popup rolls */
   const joinFast = useCallback(
     async (team: Team, customAmount?: bigint) => {
-      if (!walletClient || !address || !publicClient || !stakeToken) return;
+      if (!walletClient || !address || !publicClient || !usdg) return;
       const amount = customAmount && customAmount >= entryFee ? customAmount : entryFee;
       setPending("joinFast");
       setError(null);
@@ -448,7 +451,7 @@ export function useSnakesLadders() {
 
         // 1. Approval
         const allowance = (await publicClient.readContract({
-          address: stakeToken,
+          address: usdg,
           abi: erc20Abi,
           functionName: "allowance",
           args: [address, VIPER_SL_ADDRESS],
@@ -456,7 +459,7 @@ export function useSnakesLadders() {
 
         if (allowance < amount) {
           const hash = await walletClient.writeContract({
-            address: stakeToken,
+            address: usdg,
             abi: erc20Abi,
             functionName: "approve",
             args: [VIPER_SL_ADDRESS, amount],
@@ -500,7 +503,7 @@ export function useSnakesLadders() {
         setPending(null);
       }
     },
-    [walletClient, address, publicClient, stakeToken, entryFee, sync]
+    [walletClient, address, publicClient, usdg, entryFee, sync]
   );
 
   const startMatch = useCallback(() => write("start", "startMatch"), [write]);
@@ -534,6 +537,7 @@ export function useSnakesLadders() {
   const passTurn = useCallback(() => write("passTurn", "passTurn"), [write]);
   const poke = useCallback(() => write("poke", "poke"), [write]);
   const claimWinnings = useCallback(() => write("claim", "claim"), [write]);
+  const claimViperBonus = useCallback(() => write("claimViper", "claimViper"), [write]);
 
   const revokeSession = useCallback(async () => {
     if (!session) return;
@@ -572,6 +576,7 @@ export function useSnakesLadders() {
     tokenDecimals,
     playerBalance,
     pendingWithdrawal,
+    pendingViperBonus, claimViperBonus,
     hasJoined,
     myTeam,
     myStake,

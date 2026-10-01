@@ -49,12 +49,13 @@ export function useDoubleOrNothing() {
 
   const [bankroll, setBankroll] = useState<bigint>(BigInt(0));
   const [maxStake, setMaxStake] = useState<bigint>(BigInt(0));
-  const [stakeToken, setStakeToken] = useState<`0x${string}` | null>(null);
-  const [tokenSymbol, setTokenSymbol] = useState<string>("VIPER");
+  const [usdg, setUsdg] = useState<`0x${string}` | null>(null);
+  const [tokenSymbol, setTokenSymbol] = useState<string>("USDG");
   const [tokenDecimals, setTokenDecimals] = useState<number>(18);
   const [tokenBalance, setTokenBalance] = useState<bigint>(BigInt(0));
   const [tokenAllowance, setTokenAllowance] = useState<bigint>(BigInt(0));
   const [pendingWithdrawal, setPendingWithdrawal] = useState<bigint>(BigInt(0));
+  const [pendingViperBonus, setPendingViperBonus] = useState<bigint>(BigInt(0));
   const [currentBlock, setCurrentBlock] = useState<bigint>(BigInt(0));
 
   const [activeFlip, setActiveFlip] = useState<ActiveFlip | null>(null);
@@ -92,23 +93,25 @@ export function useDoubleOrNothing() {
       const [bRoll, mStake, sToken, blockNum] = await Promise.all([
         readContract<bigint>("bankroll"),
         readContract<bigint>("maxStake"),
-        readContract<`0x${string}`>("stakeToken"),
+        readContract<`0x${string}`>("usdg"),
         publicClient.getBlockNumber(),
       ]);
 
       setBankroll(bRoll);
       setMaxStake(mStake);
-      setStakeToken(sToken);
+      setUsdg(sToken);
       setCurrentBlock(blockNum);
 
       if (address) {
         // Read player specific data
-        const [pw, flipData] = await Promise.all([
+        const [pw, pvb, flipData] = await Promise.all([
           readContract<bigint>("pendingWithdrawals", [address]),
+          readContract<bigint>("pendingViperBonus", [address]),
           readContract<[ `0x${string}`, bigint, bigint, boolean ]>("getFlip", [address]),
         ]);
 
         setPendingWithdrawal(pw);
+        setPendingViperBonus(pvb);
 
         const [comm, stk, blk, act] = flipData;
         if (act) {
@@ -224,11 +227,11 @@ export function useDoubleOrNothing() {
   // Approve token
   const approveToken = useCallback(
     async (amount: bigint) => {
-      if (!walletClient || !address || !stakeToken || !publicClient) return;
+      if (!walletClient || !address || !usdg || !publicClient) return;
       try {
-        setStatusMessage("Approving VIPER…");
+        setStatusMessage("Approving USDG…");
         const hash = await walletClient.writeContract({
-          address: stakeToken,
+          address: usdg,
           abi: erc20Abi,
           functionName: "approve",
           args: [VIPER_DON_ADDRESS, amount],
@@ -237,14 +240,14 @@ export function useDoubleOrNothing() {
         });
         await publicClient.waitForTransactionReceipt({ hash });
         await syncState();
-        setStatusMessage("VIPER approved!");
+        setStatusMessage("USDG approved!");
         setTimeout(() => setStatusMessage(null), 2500);
       } catch (err: any) {
         setError(err?.shortMessage || err?.message || "Approval failed");
         setTimeout(() => setError(null), 4000);
       }
     },
-    [walletClient, address, stakeToken, publicClient, syncState]
+    [walletClient, address, usdg, publicClient, syncState]
   );
 
   // Execute full Flip (Commit + Reveal)
@@ -371,7 +374,7 @@ export function useDoubleOrNothing() {
 
         const coin = (won ? choice : ((1 - choice) as 0 | 1));
         setLastResult({ won, coin, payout });
-        setStatusMessage(won ? "WINNER! 1.9x payout credited!" : "House flipped the other side. Try again!");
+        setStatusMessage(won ? "WINNER! 1.9x payout + 2,000 VIPER bonus credited!" : "House flipped the other side. Try again!");
 
         // Clear active flip storage
         try {
@@ -447,6 +450,28 @@ export function useDoubleOrNothing() {
     }
   }, [walletClient, address, publicClient, syncState]);
 
+  // Claim pending VIPER winner bonus
+  const claimViperBonus = useCallback(async () => {
+    if (!walletClient || !address || !publicClient) return;
+    try {
+      setStatusMessage("Claiming VIPER bonus…");
+      const hash = await walletClient.writeContract({
+        address: VIPER_DON_ADDRESS,
+        abi: doubleOrNothingAbi,
+        functionName: "claimViper",
+        chain: activeChain,
+        account: address,
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await syncState();
+      setStatusMessage("VIPER bonus claimed!");
+      setTimeout(() => setStatusMessage(null), 3000);
+    } catch (err: any) {
+      setError(err?.shortMessage || err?.message || "Claim failed");
+      setTimeout(() => setError(null), 4000);
+    }
+  }, [walletClient, address, publicClient, syncState]);
+
   // Reclaim expired flip
   const refund = useCallback(async () => {
     if (!walletClient || !address || !publicClient) return;
@@ -472,12 +497,13 @@ export function useDoubleOrNothing() {
   return {
     bankroll,
     maxStake,
-    stakeToken,
+    usdg,
     tokenSymbol,
     tokenDecimals,
     tokenBalance,
     tokenAllowance,
     pendingWithdrawal,
+    pendingViperBonus, claimViperBonus,
     currentBlock,
     activeFlip,
     lastResult,

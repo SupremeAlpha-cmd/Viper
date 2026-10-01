@@ -117,3 +117,12 @@ event SessionRevoked(uint256 indexed matchId, address indexed player, address in
 2. Client: `lib/session.ts` (keygen, session wallet client, nonce manager, gas estimate), `useViper` routing, entry UI (authorize + top-up prompts, "fast play enabled" state).
 3. Local anvil E2E: full loop — join with session, fund, play a match with zero pop-ups (scripted), expiry/revoke paths.
 4. Mainnet: deploy, calibrate gas/top-up numbers, update `NEXT_PUBLIC_VIPER_ARENA`, playtest.
+
+## Drawdown check-ins (Javin, 2026-10-01 — raw thought, not yet specced)
+
+Balance chip always visible during play. Baseline = VIPER balance when the session starts.
+At **-25%** and **-50%** drawdown from baseline, show a card **between matches only
+(never mid-game)**: "Down 25% this session — keep going or top up?" with
+[Keep playing] and [Top up] actions. Top up opens the buy flow; Keep playing
+dismisses until the next threshold. If balance recovers above baseline, thresholds reset.
+Mix of reality check + top-up nudge, per Javin: "youre down 25% want to keep going or top up".

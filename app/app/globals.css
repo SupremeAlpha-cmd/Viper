@@ -3,6 +3,7 @@
 @theme {
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: "Press Start 2P", ui-monospace, monospace;
   /* Viper brand blue — sampled from the logo striker (#084bbb),
      scaled up for dark-background legibility. */
   --color-viper-200: #bcd3ff;
@@ -35,5 +36,26 @@ body {
 
 .viper-flash {
   animation: viper-flash 0.7s ease-out forwards;
+  pointer-events: none;
+}
+
+/* Cartoon explosion: chunky orange pop */
+@keyframes boom-pop {
+  0% {
+    opacity: 1;
+    transform: scale(0.6) rotate(-4deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.2) rotate(3deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+.boom-flash {
+  animation: boom-pop 0.6s ease-out forwards;
   pointer-events: none;
 }

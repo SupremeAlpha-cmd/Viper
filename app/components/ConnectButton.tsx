@@ -2,6 +2,7 @@
 
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { shortAddr } from "../lib/contract";
+import { NAVY } from "./cartoon";
 
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
@@ -12,7 +13,8 @@ export function ConnectButton() {
     return (
       <button
         onClick={() => disconnect()}
-        className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/30"
+        className="rounded-full border-[3px] bg-white/10 px-4 py-2 font-mono text-sm text-white transition hover:bg-white/20"
+        style={{ borderColor: "rgba(255,255,255,0.35)" }}
         title="Disconnect"
       >
         {shortAddr(address)}
@@ -23,9 +25,10 @@ export function ConnectButton() {
     <button
       onClick={() => connectors[0] && connect({ connector: connectors[0] })}
       disabled={isPending}
-      className="rounded-full bg-viper-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-viper-300 disabled:opacity-50"
+      className="font-pixel rounded-full border-[3px] bg-white px-5 py-2.5 text-[10px] transition hover:bg-[#dbeafe] disabled:opacity-50"
+      style={{ borderColor: NAVY, color: NAVY }}
     >
-      {isPending ? "Connecting…" : "Connect wallet"}
+      {isPending ? "CONNECTING…" : "CONNECT"}
     </button>
   );
 }

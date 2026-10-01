@@ -1,15 +1,32 @@
 import { GameScreen } from "../components/GameScreen";
+import { NAVY, BLUE } from "../components/cartoon";
 
 export default function Page() {
   return (
-    <div className="pt-4">
+    <div className="pt-10">
       <div className="mx-auto mb-8 max-w-2xl text-center">
-        <h1 className="font-display text-4xl font-bold text-white sm:text-5xl">
-          The arena is <span className="text-viper-500">on-chain</span>
+        <p
+          className="font-pixel mb-5 text-xs"
+          style={{ color: NAVY, letterSpacing: "0.25em" }}
+        >
+          THE ARENA IS OPEN
+        </p>
+        <h1
+          className="font-pixel text-2xl leading-[2] sm:text-3xl"
+          style={{ color: NAVY }}
+        >
+          DROP IN.
+          <br />
+          BLOW UP.
+          <br />
+          <span style={{ color: BLUE }}>TAKE THE POT.</span>
         </h1>
-        <p className="mt-3 text-sm text-zinc-400 sm:text-base">
-          Real-time bomber battles where every step, bomb and explosion is a
-          blockchain transaction. Last one standing takes the pot.
+        <p
+          className="mx-auto mt-5 max-w-md text-sm font-medium leading-relaxed"
+          style={{ color: NAVY, opacity: 0.8 }}
+        >
+          Real-time bomber battles, fully on-chain. Last one standing takes the
+          pot.
         </p>
       </div>
       <GameScreen />

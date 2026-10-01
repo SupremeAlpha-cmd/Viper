@@ -2,6 +2,7 @@
 
 import type { PlayerState, BombState, Flash } from "../lib/useViper";
 import { GRID, shortAddr } from "../lib/contract";
+import { NAVY, BLUE, AMBER } from "./cartoon";
 
 interface Props {
   players: PlayerState[];
@@ -11,7 +12,7 @@ interface Props {
   self?: string;
 }
 
-/** The 11×11 arena. Players, live bombs and explosion flashes. */
+/** The 11×11 arena — cartoonish board rendered inside the Cartridge screen. */
 export function ArenaGrid({ players, bombs, flashes, blockNumber, self }: Props) {
   const cellPlayers = new Map<string, PlayerState[]>();
   for (const p of players) {
@@ -31,21 +32,32 @@ export function ArenaGrid({ players, bombs, flashes, blockNumber, self }: Props)
       const ps = cellPlayers.get(k) || [];
       const bomb = cellBombs.get(k);
       const flashKey = cellFlash.get(k);
+      const checker = (x + y) % 2 === 0;
       cells.push(
         <div
           key={k}
-          className="relative aspect-square rounded-[3px] bg-white/[0.025] ring-1 ring-white/[0.06]"
+          className="relative aspect-square rounded-[3px]"
+          style={{ background: checker ? "#16204d" : "#0e1533" }}
         >
           {flashKey !== undefined && (
             <div
               key={flashKey}
-              className="viper-flash absolute inset-0 rounded-[3px] bg-viper-500/70"
+              className="boom-flash absolute inset-0 rounded-[3px]"
+              style={{
+                background:
+                  "radial-gradient(circle, #fde047 0%, #fb923c 55%, #ef4444 100%)",
+              }}
             />
           )}
           {bomb && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div
-                className="flex h-[62%] w-[62%] animate-pulse items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-black"
+                className="font-pixel flex h-[68%] w-[68%] animate-pulse items-center justify-center rounded-full border-2 text-[9px] text-white"
+                style={{
+                  borderColor: NAVY,
+                  background: AMBER,
+                  textShadow: `1px 1px 0 ${NAVY}`,
+                }}
                 title={`Detonates in ${Math.max(0, bomb.detonateAt - blockNumber)} blocks`}
               >
                 {Math.max(0, bomb.detonateAt - blockNumber)}
@@ -61,11 +73,12 @@ export function ArenaGrid({ players, bombs, flashes, blockNumber, self }: Props)
                   <div
                     key={p.address}
                     title={shortAddr(p.address)}
-                    className={`h-full max-h-6 w-full max-w-6 rounded-full ring-2 ${
-                      isSelf
-                        ? "bg-viper-500 ring-viper-200"
-                        : "bg-zinc-300 ring-zinc-100"
-                    }`}
+                    className="h-full max-h-6 w-full max-w-6 rounded-full border-2"
+                    style={{
+                      borderColor: isSelf ? "#fff" : NAVY,
+                      background: isSelf ? BLUE : "#fff",
+                      boxShadow: `1px 1px 0 ${NAVY}`,
+                    }}
                   />
                 );
               })}
@@ -78,7 +91,7 @@ export function ArenaGrid({ players, bombs, flashes, blockNumber, self }: Props)
 
   return (
     <div
-      className="grid w-full gap-[3px] rounded-xl border border-white/10 bg-black/40 p-2"
+      className="grid w-full gap-[3px]"
       style={{ gridTemplateColumns: `repeat(${GRID}, minmax(0, 1fr))` }}
     >
       {cells}

@@ -55,13 +55,34 @@ contract ViperArena {
     Bomb[] public bombs;
     uint256 public pot;
     uint256 public aliveCount;
-    uint256 public lastDeathBlock;
+    uint256 public lastDeathBatch; // detonateAt of the latest death batch (SEC-04)
     address[] public lastDeaths;
 
     mapping(address => bool) public joined;
     mapping(address => bool) public alive;
     mapping(address => uint8) public px;
     mapping(address => uint8) public py;
+
+    /// @notice Pull-payment ledger (SEC-03): winnings, splits, refunds and
+    ///         fees are credited here instead of push-transferred during
+    ///         settlement, so one failing recipient can't brick the match.
+    mapping(address => uint256) public pendingWithdrawals;
+
+    /// @notice Maximum session-key lifetime. Bounds the compromise window of
+    ///         a browser-held key. Matches last minutes; a day is generous.
+    uint64 public constant MAX_SESSION_TTL = 1 days;
+
+    struct SessionAuth {
+        address player;
+        uint64 expiry;
+        bool revoked;
+        uint256 authMatchId; // keys only work in the match they joined
+    }
+
+    /// @notice Browser-held session keys authorized for gameplay-only
+    ///         actions. A session key can never move funds: move/plantBomb
+    ///         resolve it to its player; everything else keys off msg.sender.
+    mapping(address => SessionAuth) public sessions;
 
     bool private _locked;
 
@@ -77,6 +98,9 @@ contract ViperArena {
     event MatchEnded(uint256 indexed matchId, address indexed winner, uint256 prize);
     event PotSplit(uint256 indexed matchId, uint256 recipients, uint256 shareEach);
     event Refunded(uint256 indexed matchId, address indexed player, uint256 amount);
+    event WithdrawalCredited(uint256 indexed matchId, address indexed to, uint256 amount);
+    event SessionAuthorized(uint256 indexed matchId, address indexed player, address indexed sessionKey, uint64 expiry);
+    event SessionRevoked(uint256 indexed matchId, address indexed player, address indexed sessionKey);
 
     modifier nonReentrant() {
         require(!_locked, "reentrant");
@@ -106,6 +130,22 @@ contract ViperArena {
 
     /// @notice Pay the entry fee to join the currently open lobby.
     function join() external nonReentrant {
+        _join(address(0), 0);
+    }
+
+    /// @notice Join and authorize a session key for gameplay in one tx.
+    ///         The key is scoped to this match and expires at `expiry`
+    ///         (must be in the future, capped at MAX_SESSION_TTL).
+    ///         Gameplay via the key costs zero wallet pop-ups; the key pays
+    ///         its own gas from a native top-up the player sends it.
+    function joinWithSession(address sessionKey, uint64 expiry) external nonReentrant {
+        require(sessionKey != address(0), "zero session key");
+        require(expiry > block.timestamp, "expiry in past");
+        require(expiry <= block.timestamp + MAX_SESSION_TTL, "expiry too far");
+        _join(sessionKey, expiry);
+    }
+
+    function _join(address sessionKey, uint64 expiry) internal {
         require(phase == Phase.Lobby, "lobby closed");
         require(!joined[msg.sender], "already joined");
         require(players.length < MAX_PLAYERS, "lobby full");
@@ -122,6 +162,11 @@ contract ViperArena {
         players.push(msg.sender);
         pot += entryFee;
         emit PlayerJoined(matchId, msg.sender);
+
+        if (sessionKey != address(0)) {
+            sessions[sessionKey] = SessionAuth(msg.sender, expiry, false, matchId);
+            emit SessionAuthorized(matchId, msg.sender, sessionKey, expiry);
+        }
     }
 
     /// @notice Anyone can start the match once the 60s window closes.
@@ -132,7 +177,10 @@ contract ViperArena {
 
         if (players.length < 2) {
             for (uint256 i = 0; i < players.length; i++) {
-                require(stakeToken.transfer(players[i], entryFee), "refund failed");
+                // Pull-payment (SEC-03): credit the refund instead of
+                // push-transferring it, so a failing recipient can't block
+                // the lobby reset.
+                _credit(players[i], entryFee);
                 emit Refunded(matchId, players[i], entryFee);
             }
             emit MatchCancelled(matchId);
@@ -154,45 +202,49 @@ contract ViperArena {
 
     // ---- Gameplay: every move and bomb is a transaction ----
 
-    /// @notice Move one tile orthogonally.
+    /// @notice Move one tile orthogonally. Callable directly by a joined
+    ///         player or by their authorized session key (zero pop-ups).
     function move(int8 dx, int8 dy) external nonReentrant {
         require(phase == Phase.Live, "not live");
         _processExplosions();
-        if (!alive[msg.sender]) {
+        address player = _resolvePlayer(msg.sender);
+        if (!alive[player]) {
             // Eliminated by this block's explosions: finalize the match
             // instead of reverting, so the death is not rolled back (SEC-01).
             _settle();
             return;
         }
 
-        int16 nx = int16(int8(px[msg.sender])) + int16(dx);
-        int16 ny = int16(int8(py[msg.sender])) + int16(dy);
+        int16 nx = int16(int8(px[player])) + int16(dx);
+        int16 ny = int16(int8(py[player])) + int16(dy);
         require(_abs(dx) + _abs(dy) == 1, "one orthogonal step");
         require(nx >= 0 && ny >= 0 && nx < int16(uint16(GRID)) && ny < int16(uint16(GRID)), "out of bounds");
         require(!_liveBombAt(_toU8(nx), _toU8(ny)), "tile has live bomb");
 
-        px[msg.sender] = _toU8(nx);
-        py[msg.sender] = _toU8(ny);
-        emit PlayerMoved(matchId, msg.sender, _toU8(nx), _toU8(ny));
+        px[player] = _toU8(nx);
+        py[player] = _toU8(ny);
+        emit PlayerMoved(matchId, player, _toU8(nx), _toU8(ny));
         _settle();
     }
 
     /// @notice Plant a bomb on your current tile. One live bomb per player.
+    ///         Callable directly or via an authorized session key.
     function plantBomb() external nonReentrant {
         require(phase == Phase.Live, "not live");
         _processExplosions();
-        if (!alive[msg.sender]) {
+        address player = _resolvePlayer(msg.sender);
+        if (!alive[player]) {
             // Eliminated by this block's explosions: finalize the match
             // instead of reverting, so the death is not rolled back (SEC-01).
             _settle();
             return;
         }
-        require(!_hasLiveBomb(msg.sender), "already armed");
-        require(!_liveBombAt(px[msg.sender], py[msg.sender]), "bomb already here");
+        require(!_hasLiveBomb(player), "already armed");
+        require(!_liveBombAt(px[player], py[player]), "bomb already here");
 
         uint256 detonateAt = block.number + FUSE_BLOCKS;
-        bombs.push(Bomb(px[msg.sender], py[msg.sender], msg.sender, detonateAt, true));
-        emit BombPlanted(matchId, msg.sender, px[msg.sender], py[msg.sender], detonateAt);
+        bombs.push(Bomb(px[player], py[player], player, detonateAt, true));
+        emit BombPlanted(matchId, player, px[player], py[player], detonateAt);
         _settle();
     }
 
@@ -204,7 +256,60 @@ contract ViperArena {
         _settle();
     }
 
+    /// @notice Pull-payment: withdraw credited winnings, splits, refunds or
+    ///         fees. The balance is zeroed BEFORE the transfer
+    ///         (checks-effects-interactions), and a failing transfer only
+    ///         reverts the caller's own claim — never match progression.
+    function claim() external nonReentrant {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount > 0, "nothing to claim");
+        pendingWithdrawals[msg.sender] = 0;
+        require(stakeToken.transfer(msg.sender, amount), "claim failed");
+    }
+
+    /// @notice Revoke a session key. Callable by the player who authorized
+    ///         it, or by the session key itself (escape hatch if the browser
+    ///         is compromised — kill the key on-chain).
+    function revokeSession(address sessionKey) external nonReentrant {
+        SessionAuth storage s = sessions[sessionKey];
+        require(s.player != address(0), "unknown session");
+        require(msg.sender == s.player || msg.sender == sessionKey, "not authorized");
+        require(!s.revoked, "already revoked");
+        s.revoked = true;
+        emit SessionRevoked(s.authMatchId, s.player, sessionKey);
+    }
+
     // ---- Internals ----
+
+    /// @dev Resolve a gameplay caller to its player. Direct joiners act as
+    ///      themselves; an authorized session key acts as its player — but
+    ///      only in the match it was authorized for, while unexpired and
+    ///      unrevoked. Funds-moving functions (join, startMatch, claim)
+    ///      never route through here: session keys can't touch tokens.
+    ///      Note: callers who are neither joined nor authed revert here
+    ///      ("no session"); use poke() for permissionless settling.
+    function _resolvePlayer(address sender) internal view returns (address) {
+        if (joined[sender]) return sender;
+        SessionAuth memory s = sessions[sender];
+        require(
+            s.player != address(0) &&
+            !s.revoked &&
+            s.authMatchId == matchId &&
+            block.timestamp <= s.expiry,
+            "no session"
+        );
+        return s.player;
+    }
+
+    /// @dev Pull-payment credit (SEC-03). Storage write + event only: can
+    ///      never revert on a recipient's behalf, so settlement always
+    ///      progresses. Called before _openLobby() so the event carries the
+    ///      settled match's id.
+    function _credit(address to, uint256 amount) internal {
+        if (amount == 0) return;
+        pendingWithdrawals[to] += amount;
+        emit WithdrawalCredited(matchId, to, amount);
+    }
 
     function _openLobby() internal {
         // Clear per-match player state before dropping the roster.
@@ -218,7 +323,7 @@ contract ViperArena {
         delete lastDeaths;
         pot = 0;
         aliveCount = 0;
-        lastDeathBlock = 0;
+        lastDeathBatch = 0;
         matchId += 1;
         phase = Phase.Lobby;
         lobbyEndsAt = block.timestamp + LOBBY_DURATION;
@@ -226,26 +331,59 @@ contract ViperArena {
     }
 
     /// @dev Lazily resolves explosions: no keeper needed, every gameplay
-    ///      transaction first brings the world up to date.
+    ///      transaction first brings the world up to date. Due bombs detonate
+    ///      in ascending detonateAt order (min-scan), so deaths batch by the
+    ///      time they chronologically happened (SEC-04) instead of merging
+    ///      into one block batch when a lazy poke processes several due
+    ///      bombs at once.
     function _processExplosions() internal {
-        bool exploded;
+        bool anyDetonated;
+        bool detonated;
         do {
-            exploded = false;
+            detonated = false;
+            uint256 next = type(uint256).max;
+            uint256 nextAt = type(uint256).max;
             for (uint256 i = 0; i < bombs.length; i++) {
-                if (bombs[i].live && block.number >= bombs[i].detonateAt) {
-                    _detonate(i);
-                    exploded = true;
+                if (
+                    bombs[i].live &&
+                    block.number >= bombs[i].detonateAt &&
+                    bombs[i].detonateAt < nextAt
+                ) {
+                    nextAt = bombs[i].detonateAt;
+                    next = i;
                 }
             }
-        } while (exploded);
+            if (next != type(uint256).max) {
+                _detonate(next, nextAt);
+                detonated = true;
+                anyDetonated = true;
+            }
+        } while (detonated);
+        // SEC-05: drop tombstoned bombs so per-call scans stay O(live),
+        // not O(ever-planted). Compaction runs here, never mid-detonation:
+        // chain reactions address bombs by index while a blast resolves.
+        if (anyDetonated) _compactBombs();
     }
 
-    function _detonate(uint256 idx) internal {
+    /// @dev Swap-and-pop removal of detonated (live=false) bombs.
+    function _compactBombs() internal {
+        uint256 i = 0;
+        while (i < bombs.length) {
+            if (bombs[i].live) {
+                i++;
+            } else {
+                bombs[i] = bombs[bombs.length - 1];
+                bombs.pop();
+            }
+        }
+    }
+
+    function _detonate(uint256 idx, uint256 batchId) internal {
         Bomb storage b = bombs[idx];
         b.live = false;
         emit BombExploded(matchId, b.x, b.y);
 
-        _blastTile(b.x, b.y);
+        _blastTile(b.x, b.y, batchId);
         int8[4] memory dxs = [int8(1), int8(-1), int8(0), int8(0)];
         int8[4] memory dys = [int8(0), int8(0), int8(1), int8(-1)];
         for (uint256 d = 0; d < 4; d++) {
@@ -253,22 +391,23 @@ contract ViperArena {
                 int16 nx = int16(int8(b.x)) + dxs[d] * int16(uint16(r));
                 int16 ny = int16(int8(b.y)) + dys[d] * int16(uint16(r));
                 if (nx < 0 || ny < 0 || nx >= int16(uint16(GRID)) || ny >= int16(uint16(GRID))) break;
-                _blastTile(_toU8(nx), _toU8(ny));
+                _blastTile(_toU8(nx), _toU8(ny), batchId);
             }
         }
     }
 
-    function _blastTile(uint8 x, uint8 y) internal {
+    function _blastTile(uint8 x, uint8 y, uint256 batchId) internal {
         for (uint256 i = 0; i < players.length; i++) {
             address p = players[i];
             if (alive[p] && px[p] == x && py[p] == y) {
                 alive[p] = false;
                 aliveCount -= 1;
-                _recordDeath(p);
+                _recordDeath(p, batchId);
                 emit PlayerEliminated(matchId, p);
             }
         }
-        // Chain-detonate any other live bomb caught in the blast.
+        // Chain-detonate any other live bomb caught in the blast: it explodes
+        // "now", so its deaths land in their own latest batch (SEC-04).
         for (uint256 i = 0; i < bombs.length; i++) {
             if (bombs[i].live && bombs[i].x == x && bombs[i].y == y) {
                 bombs[i].detonateAt = block.number;
@@ -276,9 +415,9 @@ contract ViperArena {
         }
     }
 
-    function _recordDeath(address p) internal {
-        if (block.number > lastDeathBlock) {
-            lastDeathBlock = block.number;
+    function _recordDeath(address p, uint256 batchId) internal {
+        if (batchId > lastDeathBatch) {
+            lastDeathBatch = batchId;
             delete lastDeaths;
         }
         lastDeaths.push(p);
@@ -293,9 +432,13 @@ contract ViperArena {
             uint256 fee = (pot * FEE_BPS) / 10000;
             uint256 prize = pot - fee;
             emit MatchEnded(matchId, winner, prize);
-            _openLobby(); // state first, tokens after
-            require(stakeToken.transfer(treasury, fee), "fee xfer failed");
-            require(stakeToken.transfer(winner, prize), "prize xfer failed");
+            // Pull-payment (SEC-03): credit before the lobby reset so the
+            // WithdrawalCredited event carries the settled match's id. The
+            // credit is a storage write, not a token transfer, so no
+            // recipient can revert settlement.
+            _credit(treasury, fee);
+            _credit(winner, prize);
+            _openLobby();
         } else if (aliveCount == 0) {
             // Simultaneous final deaths: the last batch eliminated splits it.
             _splitPot();
@@ -315,13 +458,18 @@ contract ViperArena {
         require(n > 0, "no recipients");
         uint256 fee = (pot * FEE_BPS) / 10000;
         uint256 share = (pot - fee) / n;
+        // Integer-division remainder: sweep the dust to the treasury as
+        // house seed instead of leaving it locked in the contract.
+        uint256 dust = (pot - fee) % n;
         emit PotSplit(matchId, n, share);
-        _openLobby(); // state first, tokens after
-        require(stakeToken.transfer(treasury, fee), "fee xfer failed");
+        // Pull-payment (SEC-03): credit before the lobby reset so the
+        // WithdrawalCredited events carry the settled match's id.
+        _credit(treasury, fee);
+        _credit(treasury, dust);
         for (uint256 i = 0; i < n; i++) {
-            require(stakeToken.transfer(recipients[i], share), "split xfer failed");
+            _credit(recipients[i], share);
         }
-        // Dust (if any) stays as seed for the house; negligible by construction.
+        _openLobby();
     }
 
     function _liveBombAt(uint8 x, uint8 y) internal view returns (bool) {

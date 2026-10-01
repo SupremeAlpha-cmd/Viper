@@ -72,6 +72,9 @@ export function ArenaGrid({
           style={{
             background: checker ? "#16204d" : "#0e1533",
             cursor: isSelfTile ? "crosshair" : undefined,
+            // The gesture starts here: kill touch scrolling on this tile
+            // from the first contact so the drag never becomes a page scroll.
+            touchAction: isSelfTile ? "none" : undefined,
             // Path highlight: warm amber wash with the step number.
             boxShadow:
               stepNum !== undefined
@@ -150,11 +153,7 @@ export function ArenaGrid({
   return (
     <div
       className="grid w-full gap-[3px]"
-      style={{
-        gridTemplateColumns: `repeat(${GRID}, minmax(0, 1fr))`,
-        // While drawing a path, kill touch scrolling so the drag stays on the grid.
-        touchAction: drawing ? "none" : undefined,
-      }}
+      style={{ gridTemplateColumns: `repeat(${GRID}, minmax(0, 1fr))` }}
     >
       {cells}
     </div>

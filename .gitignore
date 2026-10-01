@@ -7,3 +7,6 @@ app/.next/
 app/.env.local
 .DS_Store
 *.tsbuildinfo
+
+# Operator secrets: deployer keys, deploy notes. Never commit.
+hidden_files/

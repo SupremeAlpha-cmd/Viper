@@ -359,8 +359,7 @@ export function useViper() {
    * falls back to the wallet path. An ended session is cleared with a
    * notice instead of silently degrading into per-move pop-ups.
    */
-  const sessionSend = useCallback(
-    async (fn: "move" | "plantBomb", args: unknown[]) => {
+  const sessionSend = useCallback(async (fn: string, args: unknown[]) => {
       const sender = sessionSenderRef.current;
       if (session && sender && isSessionLive(session)) {
         try {
@@ -409,7 +408,10 @@ export function useViper() {
       // 2. Size the gas dust for ~300 moves.
       const { wei: topUpWei, gasPerMove, gasPrice } = await estimateTopUp(
         publicClient,
-        newSession.address
+        newSession.address,
+        { address: VIPER_ARENA_ADDRESS, abi: viperAbi },
+        "move",
+        [1, 0]
       );
       if (topUpWei === BigInt(0) || gasPrice === BigInt(0)) {
         throw new Error("could not estimate gas — check the network and try again");
@@ -444,7 +446,10 @@ export function useViper() {
       await publicClient.waitForTransactionReceipt({ hash: topHash });
       // 6. Go live: the local signer takes over gameplay.
       sessionPrivRef.current = privateKey;
-      sessionSenderRef.current = new SessionSender(privateKey, publicClient);
+      sessionSenderRef.current = new SessionSender(privateKey, publicClient, {
+        address: VIPER_ARENA_ADDRESS,
+        abi: viperAbi,
+      });
       sessionGasRef.current = { gasPerMove, gasPrice };
       setSession(newSession);
       setTopUp({ wei: topUpWei, moves: TOP_UP_MOVES });

@@ -1,12 +1,15 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { decodeEventLog } from "viem";
 import {
-  VIPER_ARENA_ADDRESS,
-  isDeployed,
-  viperAbi,
+  VIPER_SNAKE_ADDRESS,
+  isSnakeDeployed,
+  snakeAbi,
   erc20Abi,
-} from "./contract";
+  SNAKE_GRID,
+} from "./snake";
 import {
   createSessionKey,
   estimateTopUp,
@@ -19,29 +22,17 @@ import {
 
 export { formatTokens } from "./format";
 
-export interface PlayerState {
+export interface SnakePlayer {
   address: `0x${string}`;
-  x: number;
-  y: number;
+  /** Packed cells, head-first. Unpack: x = c >> 8, y = c & 0xff. */
+  segments: number[];
+  dir: number;
+  score: number;
   alive: boolean;
 }
 
-export interface BombState {
-  x: number;
-  y: number;
-  planter: `0x${string}`;
-  detonateAt: number;
-  live: boolean;
-}
-
-export interface Flash {
-  x: number;
-  y: number;
-  key: number;
-}
-
-export interface MatchResult {
-  kind: "win" | "split" | "cancelled";
+export interface SnakeResult {
+  kind: "win" | "split" | "weighted" | "cancelled";
   winner?: `0x${string}`;
   prize?: bigint;
   recipients?: number;
@@ -50,15 +41,16 @@ export interface MatchResult {
 }
 
 const POLL_MS = 2000;
-
 const num = (v: unknown): number => Number(v as bigint);
+const unpack = (c: number): [number, number] => [c >> 8, c & 0xff];
+export const unpackCell = unpack;
 
 /**
- * useViper — live view of the arena.
- * Polls contract state every 2s, rebuilds the grid from reads,
- * and layers explosion flashes + match results from event logs.
+ * useSnake — live view of the snake pit.
+ * Polls getMatchState() every 2s (one call: no multicall3 on this chain),
+ * layers death flashes + match results from event logs.
  */
-export function useViper() {
+export function useSnake() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
@@ -68,21 +60,21 @@ export function useViper() {
   const [lobbyEndsAt, setLobbyEndsAt] = useState<number>(0);
   const [liveEndsAt, setLiveEndsAt] = useState<number>(0);
   const [blockNumber, setBlockNumber] = useState<number>(0);
-  const [players, setPlayers] = useState<PlayerState[]>([]);
-  const [bombs, setBombs] = useState<BombState[]>([]);
+  const [currentTick, setCurrentTick] = useState<number>(0);
+  const [matchTicks, setMatchTicks] = useState<number>(0);
+  const [players, setPlayers] = useState<SnakePlayer[]>([]);
+  const [coins, setCoins] = useState<number[]>([]);
   const [pot, setPot] = useState<bigint>(BigInt(0));
   const [aliveCount, setAliveCount] = useState<number>(0);
   const [entryFee, setEntryFee] = useState<bigint>(BigInt(0));
   const [stakeToken, setStakeToken] = useState<`0x${string}` | null>(null);
   const [tokenSymbol, setTokenSymbol] = useState<string>("tokens");
   const [tokenDecimals, setTokenDecimals] = useState<number>(18);
-  const [flashes, setFlashes] = useState<Flash[]>([]);
-  const [result, setResult] = useState<MatchResult | null>(null);
+  const [deaths, setDeaths] = useState<{ x: number; y: number; key: number }[]>([]);
+  const [result, setResult] = useState<SnakeResult | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] = useState<bigint>(BigInt(0));
   const [error, setError] = useState<string | null>(null);
-  // Session-key fast play: public parts in state, the private key in a ref
-  // (memory-only — never in state, never persisted).
   const [session, setSession] = useState<SessionKey | null>(null);
   const [topUp, setTopUp] = useState<{ wei: bigint; moves: number } | null>(null);
   const [sessionLowGas, setSessionLowGas] = useState(false);
@@ -93,14 +85,19 @@ export function useViper() {
 
   const lastBlockRef = useRef<bigint>(BigInt(0));
   const matchIdRef = useRef<number>(0);
-  const flashKey = useRef(0);
+  const deathKey = useRef(0);
+  // Ref mirror of players for use inside sync() without re-creating it.
+  const playersRef = useRef<SnakePlayer[]>([]);
+  playersRef.current = players;
+
+  const target = { address: VIPER_SNAKE_ADDRESS, abi: snakeAbi };
 
   const read = useCallback(
     async <T,>(fn: string, args: unknown[] = []): Promise<T> => {
-      if (!publicClient || !isDeployed) throw new Error("no client");
+      if (!publicClient || !isSnakeDeployed) throw new Error("no client");
       return publicClient.readContract({
-        address: VIPER_ARENA_ADDRESS,
-        abi: viperAbi,
+        address: VIPER_SNAKE_ADDRESS,
+        abi: snakeAbi,
         functionName: fn,
         args,
       }) as Promise<T>;
@@ -109,7 +106,7 @@ export function useViper() {
   );
 
   const sync = useCallback(async () => {
-    if (!publicClient || !isDeployed) return;
+    if (!publicClient || !isSnakeDeployed) return;
     try {
       const [ph, mid, block] = await Promise.all([
         read<number>("phase"),
@@ -119,13 +116,11 @@ export function useViper() {
       const midNum = num(mid);
       setBlockNumber(num(block));
 
-      // New match rolled over: clear result banner + flashes.
       if (midNum !== matchIdRef.current) {
         matchIdRef.current = midNum;
         setMatchId(midNum);
         setResult(null);
-        setFlashes([]);
-        // Sessions are match-scoped on-chain: drop the local key on rollover.
+        setDeaths([]);
         sessionPrivRef.current = null;
         sessionSenderRef.current = null;
         sessionGasRef.current = null;
@@ -136,52 +131,53 @@ export function useViper() {
 
       setPhase(ph === 0 ? "lobby" : "live");
 
-      const [potV, aliveN, fee, token] = await Promise.all([
+      const [potV, aliveN, fee, token, ticks] = await Promise.all([
         read<bigint>("pot"),
         read<bigint>("aliveCount"),
         read<bigint>("entryFee"),
         read<`0x${string}`>("stakeToken"),
+        read<bigint>("MATCH_TICKS"),
       ]);
       setPot(potV);
       setAliveCount(num(aliveN));
       setEntryFee(fee);
       setStakeToken(token);
+      setMatchTicks(num(ticks));
 
       if (ph === 0) {
-        const ends = await read<bigint>("lobbyEndsAt");
-        setLobbyEndsAt(num(ends));
+        setLobbyEndsAt(num(await read<bigint>("lobbyEndsAt")));
       } else {
-        const ends = await read<bigint>("liveEndsAt");
+        const [ends, tick] = await Promise.all([
+          read<bigint>("liveEndsAt"),
+          read<bigint>("currentTick"),
+        ]);
         setLiveEndsAt(num(ends));
+        setCurrentTick(num(tick));
       }
 
-      // Whole player roster in one call (no multicall3 on Robinhood Chain).
-      const [addrs, xs, ys, alives] = (await read<unknown[]>("getMatchState")) as [
-        `0x${string}`[], bigint[], bigint[], boolean[]
-      ];
+      // Whole match state in one call.
+      const [addrs, , , dirs, scores, alives, allSegs, coinCells] =
+        (await read<unknown[]>("getMatchState")) as [
+          `0x${string}`[],
+          unknown,
+          unknown,
+          bigint[],
+          bigint[],
+          boolean[],
+          bigint[][],
+          bigint[]
+        ];
       setPlayers(
         addrs.map((a, i) => ({
           address: a,
-          x: num(xs[i]),
-          y: num(ys[i]),
+          segments: (allSegs[i] || []).map(num),
+          dir: num(dirs[i]),
+          score: num(scores[i]),
           alive: alives[i],
         }))
       );
+      setCoins((coinCells || []).map(num));
 
-      const rawBombs = await read<any[]>("getBombs");
-      setBombs(
-        rawBombs
-          .filter((b) => b.live)
-          .map((b) => ({
-            x: num(b.x),
-            y: num(b.y),
-            planter: b.planter as `0x${string}`,
-            detonateAt: num(b.detonateAt),
-            live: b.live as boolean,
-          }))
-      );
-
-      // Token metadata (once).
       if (token) {
         try {
           const [sym, dec] = await Promise.all([
@@ -193,44 +189,44 @@ export function useViper() {
         } catch { /* non-standard token */ }
       }
 
-      // Pull-payment balance: what the connected wallet can claim().
       if (address) {
         try {
-          const pw = await publicClient.readContract({
-            address: VIPER_ARENA_ADDRESS,
-            abi: viperAbi,
+          const pw = (await publicClient.readContract({
+            address: VIPER_SNAKE_ADDRESS,
+            abi: snakeAbi,
             functionName: "pendingWithdrawals",
             args: [address],
-          }) as bigint;
+          })) as bigint;
           setPendingWithdrawal(pw);
-        } catch { /* pre-pull-payment ABI / no balance */ }
+        } catch { /* none */ }
       }
 
-      // Event logs since last poll: explosion flashes + match results.
+      // Events since last poll: deaths + results.
       const from = lastBlockRef.current === BigInt(0) ? block : lastBlockRef.current + BigInt(1);
       if (from <= block) {
         const logs = await publicClient.getLogs({
-          address: VIPER_ARENA_ADDRESS,
+          address: VIPER_SNAKE_ADDRESS,
           fromBlock: from,
           toBlock: block,
         });
         for (const log of logs) {
           let decoded: { eventName: string; args: any } | null = null;
           try {
-            decoded = decodeEventLog({
-              abi: viperAbi,
-              data: log.data,
-              topics: log.topics,
-            }) as { eventName: string; args: any };
+            decoded = decodeEventLog({ abi: snakeAbi, data: log.data, topics: log.topics }) as {
+              eventName: string;
+              args: any;
+            };
           } catch { continue; }
           const { eventName, args } = decoded;
-          if (eventName === "BombExploded") {
-            const k = ++flashKey.current;
-            const fx = num(args.x), fy = num(args.y);
-            setFlashes((f) => [...f.slice(-24), { x: fx, y: fy, key: k }]);
-            setTimeout(() => {
-              setFlashes((f) => f.filter((x) => x.key !== k));
-            }, 700);
+          if (eventName === "SnakeEliminated") {
+            const k = ++deathKey.current;
+            // Flash at the victim's last known head position.
+            const victim = playersRef.current.find(
+              (p) => p.address.toLowerCase() === (args.player as string).toLowerCase()
+            );
+            const [vx, vy] = victim && victim.segments.length > 0 ? unpack(victim.segments[0]) : [12, 12];
+            setDeaths((d) => [...d.slice(-24), { x: vx, y: vy, key: k }]);
+            setTimeout(() => setDeaths((d) => d.filter((x) => x.key !== k)), 900);
           } else if (eventName === "MatchEnded") {
             setResult({
               kind: "win",
@@ -245,6 +241,8 @@ export function useViper() {
               share: args.share as bigint,
               matchId: num(args.matchId),
             });
+          } else if (eventName === "PotSplitWeighted") {
+            setResult({ kind: "weighted", recipients: num(args.recipients), matchId: num(args.matchId) });
           } else if (eventName === "MatchCancelled") {
             setResult({ kind: "cancelled", matchId: num(args.matchId) });
           }
@@ -258,37 +256,26 @@ export function useViper() {
   }, [publicClient, read, address]);
 
   useEffect(() => {
-    if (!isDeployed) return;
+    if (!isSnakeDeployed) return;
     sync();
     const t = setInterval(sync, POLL_MS);
     return () => clearInterval(t);
   }, [sync]);
 
-  // Session gas watch: warn when the key's dust covers fewer than ~20 moves.
   useEffect(() => {
     if (!session || !publicClient) return;
     const g = sessionGasRef.current;
     if (!g) return;
     let stop = false;
     const check = async () => {
-      const low = await isSessionGasLow(
-        publicClient,
-        session.address,
-        g.gasPerMove,
-        g.gasPrice
-      );
+      const low = await isSessionGasLow(publicClient, session.address, g.gasPerMove, g.gasPrice);
       if (!stop) setSessionLowGas(low);
     };
     check();
     const t = setInterval(check, 15000);
-    return () => {
-      stop = true;
-      clearInterval(t);
-    };
+    return () => { stop = true; clearInterval(t); };
   }, [session, publicClient]);
 
-  // Trailing sync after session-key sends: one deferred poll instead of a
-  // sync per keypress, so rapid moves don't spam the RPC.
   const scheduleSync = useCallback(() => {
     if (syncTimerRef.current) return;
     syncTimerRef.current = setTimeout(() => {
@@ -304,8 +291,8 @@ export function useViper() {
       setError(null);
       try {
         const hash = await walletClient.writeContract({
-          address: VIPER_ARENA_ADDRESS,
-          abi: viperAbi,
+          address: VIPER_SNAKE_ADDRESS,
+          abi: snakeAbi,
           functionName: fn,
           args,
           account: address,
@@ -323,7 +310,6 @@ export function useViper() {
     [walletClient, address, publicClient, sync]
   );
 
-  /** Join the lobby: approves the entry fee first if needed. */
   const join = useCallback(async () => {
     if (!walletClient || !address || !publicClient || !stakeToken) return;
     setPending("join");
@@ -331,12 +317,12 @@ export function useViper() {
     try {
       const allowance = (await publicClient.readContract({
         address: stakeToken, abi: erc20Abi, functionName: "allowance",
-        args: [address, VIPER_ARENA_ADDRESS],
+        args: [address, VIPER_SNAKE_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
           address: stakeToken, abi: erc20Abi, functionName: "approve",
-          args: [VIPER_ARENA_ADDRESS, entryFee],
+          args: [VIPER_SNAKE_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
         await publicClient.waitForTransactionReceipt({ hash });
@@ -350,16 +336,11 @@ export function useViper() {
   }, [walletClient, address, publicClient, stakeToken, entryFee, write]);
 
   const startMatch = useCallback(() => write("start", "startMatch"), [write]);
-  /** Claim pull-payment winnings credited to the connected wallet. */
   const claimWinnings = useCallback(() => write("claim", "claim"), [write]);
+  const poke = useCallback(() => write("poke", "poke"), [write]);
 
-  /**
-   * Gameplay send: routes through the session key when one is live (zero
-   * pop-ups, fire-and-forget so rapid keypresses aren't throttled), else
-   * falls back to the wallet path. An ended session is cleared with a
-   * notice instead of silently degrading into per-move pop-ups.
-   */
-  const sessionSend = useCallback(async (fn: string, args: unknown[]) => {
+  const sessionSend = useCallback(
+    async (fn: string, args: unknown[]) => {
       const sender = sessionSenderRef.current;
       if (session && sender && isSessionLive(session)) {
         try {
@@ -377,66 +358,51 @@ export function useViper() {
         sessionGasRef.current = null;
         setSession(null);
         setTopUp(null);
-        setError(
-          "Fast-play session ended — moves will ask your wallet again. Rejoin the next lobby for zero pop-ups."
-        );
+        setError("Fast-play session ended — steering will ask your wallet again. Rejoin the next lobby for zero pop-ups.");
       }
-      await write(fn === "move" ? "move" : "bomb", fn, args);
+      await write(fn === "setDirection" ? "steer" : "boost", fn, args);
     },
     [session, write, scheduleSync]
   );
 
-  const move = useCallback(
-    (dx: number, dy: number) => sessionSend("move", [dx, dy]),
-    [sessionSend]
-  );
-  const plantBomb = useCallback(() => sessionSend("plantBomb", []), [sessionSend]);
-  const poke = useCallback(() => write("poke", "poke"), [write]);
+  /** Commit a heading (0=up 1=right 2=down 3=left). Applies next tick. */
+  const setDirection = useCallback((dir: number) => sessionSend("setDirection", [dir]), [sessionSend]);
+  const setBoost = useCallback((b: boolean) => sessionSend("setBoost", [b]), [sessionSend]);
 
-  /**
-   * Fast join: approve (if needed) -> joinWithSession -> native top-up,
-   * then the session key takes over gameplay with zero pop-ups.
-   * Entry costs ~3 wallet confirmations; everything after is popup-free.
-   */
   const joinFast = useCallback(async () => {
     if (!walletClient || !address || !publicClient || !stakeToken) return;
     setPending("join");
     setError(null);
     try {
-      // 1. Ephemeral key — memory only, never leaves this tab.
       const { privateKey, session: newSession } = createSessionKey();
-      // 2. Size the gas dust for ~300 moves.
       const { wei: topUpWei, gasPerMove, gasPrice } = await estimateTopUp(
         publicClient,
         newSession.address,
-        { address: VIPER_ARENA_ADDRESS, abi: viperAbi },
-        "move",
-        [1, 0]
+        target,
+        "setDirection",
+        [1]
       );
       if (topUpWei === BigInt(0) || gasPrice === BigInt(0)) {
         throw new Error("could not estimate gas — check the network and try again");
       }
-      // 3. Entry-fee approval if needed (popup 1).
       const allowance = (await publicClient.readContract({
         address: stakeToken, abi: erc20Abi, functionName: "allowance",
-        args: [address, VIPER_ARENA_ADDRESS],
+        args: [address, VIPER_SNAKE_ADDRESS],
       })) as bigint;
       if (allowance < entryFee) {
         const hash = await walletClient.writeContract({
           address: stakeToken, abi: erc20Abi, functionName: "approve",
-          args: [VIPER_ARENA_ADDRESS, entryFee],
+          args: [VIPER_SNAKE_ADDRESS, entryFee],
           account: address, chain: walletClient.chain,
         });
         await publicClient.waitForTransactionReceipt({ hash });
       }
-      // 4. Join + authorize the session key in one tx (popup 2).
       const joinHash = await walletClient.writeContract({
-        address: VIPER_ARENA_ADDRESS, abi: viperAbi, functionName: "joinWithSession",
+        address: VIPER_SNAKE_ADDRESS, abi: snakeAbi, functionName: "joinWithSession",
         args: [newSession.address, newSession.expiresAt],
         account: address, chain: walletClient.chain,
       });
       await publicClient.waitForTransactionReceipt({ hash: joinHash });
-      // 5. Native top-up so the key can pay its own gas (popup 3).
       const topHash = await walletClient.sendTransaction({
         to: newSession.address,
         value: topUpWei,
@@ -444,12 +410,8 @@ export function useViper() {
         chain: walletClient.chain,
       });
       await publicClient.waitForTransactionReceipt({ hash: topHash });
-      // 6. Go live: the local signer takes over gameplay.
       sessionPrivRef.current = privateKey;
-      sessionSenderRef.current = new SessionSender(privateKey, publicClient, {
-        address: VIPER_ARENA_ADDRESS,
-        abi: viperAbi,
-      });
+      sessionSenderRef.current = new SessionSender(privateKey, publicClient, target);
       sessionGasRef.current = { gasPerMove, gasPrice };
       setSession(newSession);
       setTopUp({ wei: topUpWei, moves: TOP_UP_MOVES });
@@ -460,9 +422,8 @@ export function useViper() {
     } finally {
       setPending(null);
     }
-  }, [walletClient, address, publicClient, stakeToken, entryFee, sync]);
+  }, [walletClient, address, publicClient, stakeToken, entryFee, sync, target]);
 
-  /** Revoke the session key on-chain (player or key can call). */
   const revokeSession = useCallback(async () => {
     if (!session) return;
     try {
@@ -477,23 +438,20 @@ export function useViper() {
     }
   }, [session, write]);
 
-  const me = players.find(
-    (p) => address && p.address.toLowerCase() === address.toLowerCase()
-  );
+  const me = players.find((p) => address && p.address.toLowerCase() === address.toLowerCase());
   const joined = !!me;
   const myTurnAlive = !!me?.alive;
 
   return {
-    ready: isDeployed,
+    ready: isSnakeDeployed,
     isConnected, address,
-    phase, matchId, lobbyEndsAt, liveEndsAt, blockNumber,
-    players, bombs, pot, aliveCount,
-    entryFee, tokenSymbol, tokenDecimals,
-    flashes, result, pending, error,
+    phase, matchId, lobbyEndsAt, liveEndsAt, blockNumber, currentTick, matchTicks,
+    players, coins, pot, aliveCount,
+    entryFee, stakeToken, tokenSymbol, tokenDecimals,
+    deaths, result, pending, error,
     pendingWithdrawal,
     joined, myTurnAlive, me,
-    join, joinFast, startMatch, move, plantBomb, poke, claimWinnings, sync,
-    // Session-key fast play.
+    join, joinFast, startMatch, setDirection, setBoost, poke, claimWinnings, sync,
     session,
     sessionLive: isSessionLive(session),
     topUp,

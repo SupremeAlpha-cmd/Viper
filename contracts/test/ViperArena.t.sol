@@ -425,6 +425,94 @@ contract ViperArenaTest is Test {
         assertEq(bad.balanceOf(TREASURY), 10);
     }
 
+    // ---- Path moves: multi-cell paths in one transaction ----
+
+    function test_MovePathBasic() public {
+        _joinTwoAndStart();
+        // A spawns at (0,0): right, right, down -> (2,1).
+        int8[] memory steps = new int8[](6);
+        steps[0] = 1; steps[1] = 0;
+        steps[2] = 1; steps[3] = 0;
+        steps[4] = 0; steps[5] = 1;
+        vm.prank(A); arena.movePath(steps);
+        assertEq(arena.px(A), 2);
+        assertEq(arena.py(A), 1);
+    }
+
+    function test_MovePathValidation() public {
+        _joinTwoAndStart();
+        int8[] memory empty_ = new int8[](0);
+        vm.prank(A); vm.expectRevert("bad path length"); arena.movePath(empty_);
+        int8[] memory odd = new int8[](3);
+        odd[0] = 1; odd[1] = 0; odd[2] = 1;
+        vm.prank(A); vm.expectRevert("bad path length"); arena.movePath(odd);
+        // 21 steps > MAX_PATH_STEPS (20).
+        int8[] memory long_ = new int8[](42);
+        for (uint256 i = 0; i < 42; i += 2) { long_[i] = 1; long_[i + 1] = 0; }
+        vm.prank(A); vm.expectRevert("path too long"); arena.movePath(long_);
+        // Non-orthogonal step inside a path.
+        int8[] memory diag = new int8[](4);
+        diag[0] = 1; diag[1] = 0;
+        diag[2] = 1; diag[3] = 1;
+        vm.prank(A); vm.expectRevert("one orthogonal step"); arena.movePath(diag);
+        // Out of bounds on the first step: A spawns at (0,0).
+        int8[] memory oob = new int8[](2);
+        oob[0] = -1; oob[1] = 0;
+        vm.prank(A); vm.expectRevert("out of bounds"); arena.movePath(oob);
+    }
+
+    function test_MovePathAtomicOnBombTile() public {
+        _joinTwoAndStart();
+        // B plants at (10,0); A walks a path that ends on B's bomb tile.
+        // The whole path must revert: A stays at spawn.
+        vm.prank(B); arena.plantBomb();
+        int8[] memory steps = new int8[](20);
+        for (uint256 i = 0; i < 20; i += 2) { steps[i] = 1; steps[i + 1] = 0; }
+        vm.prank(A); vm.expectRevert("tile has live bomb"); arena.movePath(steps);
+        assertEq(arena.px(A), 0, "atomic revert: A never moved");
+        assertEq(arena.py(A), 0);
+    }
+
+    function test_MovePathMaxSteps() public {
+        _joinTwoAndStart();
+        // Exactly 20 steps is allowed: zig-zag within the board from (0,0).
+        int8[] memory steps = new int8[](40);
+        for (uint256 i = 0; i < 40; i += 4) {
+            steps[i] = 1; steps[i + 1] = 0;
+            steps[i + 2] = 0; steps[i + 3] = 1;
+        }
+        vm.prank(A); arena.movePath(steps);
+        assertEq(arena.px(A), 10);
+        assertEq(arena.py(A), 10);
+    }
+
+    function test_SessionKeyMovePath() public {
+        address K = address(0x5E55);
+        vm.prank(A); arena.joinWithSession(K, uint64(block.timestamp + 2 hours));
+        vm.prank(B); arena.join();
+        vm.warp(block.timestamp + 61);
+        arena.startMatch();
+        // K paths as A: right, down -> (1,1).
+        int8[] memory steps = new int8[](4);
+        steps[0] = 1; steps[1] = 0;
+        steps[2] = 0; steps[3] = 1;
+        vm.prank(K); arena.movePath(steps);
+        assertEq(arena.px(A), 1, "session path lands on player coords");
+        assertEq(arena.py(A), 1);
+    }
+
+    function test_MovePathDeadCallerSettles() public {
+        _joinTwoAndStart();
+        // A plants at spawn and dies in its own blast; the path call must
+        // finalize (SEC-01), not revert.
+        vm.prank(A); arena.plantBomb();
+        vm.roll(block.number + FUSE + 1);
+        int8[] memory steps = new int8[](2);
+        steps[0] = 1; steps[1] = 0;
+        vm.prank(A); arena.movePath(steps);
+        assertEq(uint8(arena.phase()), uint8(ViperArena.Phase.Lobby));
+    }
+
     // ---- Session keys: zero mid-game pop-ups, gameplay-only scope ----
 
     function test_JoinWithSessionRegistersKey() public {

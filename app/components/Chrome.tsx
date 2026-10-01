@@ -6,11 +6,11 @@ import Link from "next/link";
 import { ConnectButton } from "./ConnectButton";
 import { NAVY, SKY } from "./cartoon";
 
-/* App chrome (header/footer) — hidden on the standalone landing page,
-   which brings its own nav and footer. Cartoonish to match /landing. */
+/* App chrome (header/footer) — hidden on the standalone arcade homepage,
+   which brings its own nav and footer. Cartoonish to match. */
 export function Chrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/landing") return <>{children}</>;
+  if (pathname === "/") return <>{children}</>;
 
   return (
     <div className="min-h-screen" style={{ background: SKY, color: NAVY }}>
@@ -35,14 +35,11 @@ export function Chrome({ children }: { children: React.ReactNode }) {
           <span className="font-pixel text-sm text-white">VIPER</span>
         </Link>
         <nav className="hidden gap-6 text-xs font-bold uppercase tracking-widest text-white/80 md:flex">
-          <Link href="/" className="hover:text-white">
+          <Link href="/bomber" className="hover:text-white">
             Bomber
           </Link>
           <Link href="/snakes-ladders" className="hover:text-white">
             Snakes & Ladders
-          </Link>
-          <Link href="/landing" className="hover:text-white">
-            About
           </Link>
         </nav>
         <ConnectButton />

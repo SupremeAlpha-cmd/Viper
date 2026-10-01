@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Viper — on-chain arcade",
     description:
-      "Six games. One arcade. Stake USDG, outplay everyone, and take the pot — plus a VIPER bonus on every win.",
+      "Five games. One arcade. Stake USDG, outplay everyone, and take the pot — plus a VIPER bonus on every win.",
     images: ["/opengraph-image.png"],
   },
 };

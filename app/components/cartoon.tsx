@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-/* Shared cartoonish design tokens — mirrors /landing so the game screen
-   feels like the same product. Do not restyle /landing from here. */
+/* Shared cartoonish design tokens — mirrors the arcade homepage so the game screen
+   feels like the same product. Do not restyle the homepage from here. */
 export const NAVY = "#0b1230";
 export const SKY = "#7cc4f5";
 export const BLUE = "#2e7cf6";
@@ -70,7 +70,7 @@ export function ChunkyButton({
   );
 }
 
-/** SNES-cartridge frame for the arena board (same pattern as /landing). */
+/** SNES-cartridge frame for the arena board (same pattern as the homepage). */
 export function Cartridge({
   children,
   label = "★ VIPER ★",

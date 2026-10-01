@@ -98,7 +98,7 @@ export class SessionSender {
     return n;
   }
 
-  send(fn: "move" | "plantBomb", args: unknown[]): Promise<`0x${string}`> {
+  send(fn: "move" | "movePath" | "plantBomb", args: unknown[]): Promise<`0x${string}`> {
     const run = this.queue.then(() => this._send(fn, args));
     // Keep the queue alive past individual failures.
     this.queue = run.catch(() => {});
@@ -106,7 +106,7 @@ export class SessionSender {
   }
 
   private async _send(
-    fn: "move" | "plantBomb",
+    fn: "move" | "movePath" | "plantBomb",
     args: unknown[]
   ): Promise<`0x${string}`> {
     const account = this.client.account!;

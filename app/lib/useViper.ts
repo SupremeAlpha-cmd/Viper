@@ -6,6 +6,8 @@ import {
   isDeployed,
   viperAbi,
   erc20Abi,
+  GRID,
+  MAX_PATH_STEPS,
 } from "./contract";
 import {
   createSessionKey,
@@ -24,6 +26,8 @@ export interface PlayerState {
   x: number;
   y: number;
   alive: boolean;
+  /** True while this render is an unconfirmed local prediction. */
+  optimistic?: boolean;
 }
 
 export interface BombState {
@@ -90,6 +94,15 @@ export function useViper() {
   const sessionSenderRef = useRef<SessionSender | null>(null);
   const sessionGasRef = useRef<{ gasPerMove: bigint; gasPrice: bigint } | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Optimistic UI: our own moves render instantly, then reconcile with the
+  // chain on the next sync. The ref mirror lets sync() compare without
+  // stale closures; `at` bounds how long an unconfirmed render can linger.
+  const [optimisticPos, setOptimisticPos] = useState<{ x: number; y: number } | null>(null);
+  const optimisticRef = useRef<{ x: number; y: number; at: number } | null>(null);
+  const setOptimistic = useCallback((p: { x: number; y: number } | null) => {
+    optimisticRef.current = p ? { ...p, at: Date.now() } : null;
+    setOptimisticPos(p);
+  }, []);
 
   const lastBlockRef = useRef<bigint>(BigInt(0));
   const matchIdRef = useRef<number>(0);
@@ -132,6 +145,7 @@ export function useViper() {
         setSession(null);
         setTopUp(null);
         setSessionLowGas(false);
+        setOptimistic(null);
       }
 
       setPhase(ph === 0 ? "lobby" : "live");
@@ -167,6 +181,22 @@ export function useViper() {
           alive: alives[i],
         }))
       );
+
+      // Reconcile the optimistic render: the chain caught up (positions
+      // match), proved us wrong (we died), or the prediction simply aged
+      // out (tx reverted or is stuck) — chain truth wins in all cases.
+      const opt = optimisticRef.current;
+      if (opt && address) {
+        const selfIdx = addrs.findIndex(
+          (a) => a.toLowerCase() === address.toLowerCase()
+        );
+        const settled =
+          selfIdx < 0 ||
+          (num(xs[selfIdx]) === opt.x && num(ys[selfIdx]) === opt.y) ||
+          !alives[selfIdx] ||
+          Date.now() - opt.at > 12000;
+        if (settled) setOptimistic(null);
+      }
 
       const rawBombs = await read<any[]>("getBombs");
       setBombs(
@@ -353,6 +383,12 @@ export function useViper() {
   /** Claim pull-payment winnings credited to the connected wallet. */
   const claimWinnings = useCallback(() => write("claim", "claim"), [write]);
 
+  const me = players.find(
+    (p) => address && p.address.toLowerCase() === address.toLowerCase()
+  );
+  const joined = !!me;
+  const myTurnAlive = !!me?.alive;
+
   /**
    * Gameplay send: routes through the session key when one is live (zero
    * pop-ups, fire-and-forget so rapid keypresses aren't throttled), else
@@ -360,7 +396,7 @@ export function useViper() {
    * notice instead of silently degrading into per-move pop-ups.
    */
   const sessionSend = useCallback(
-    async (fn: "move" | "plantBomb", args: unknown[]) => {
+    async (fn: "move" | "movePath" | "plantBomb", args: unknown[]) => {
       const sender = sessionSenderRef.current;
       if (session && sender && isSessionLive(session)) {
         try {
@@ -387,10 +423,77 @@ export function useViper() {
     [session, write, scheduleSync]
   );
 
+  /**
+   * Single step with optimistic UI: validate locally against the last sync,
+   * render instantly, then send. If the chain disagrees, the next sync
+   * reconciles (see sync()). Obviously-bad moves never hit the chain.
+   */
   const move = useCallback(
-    (dx: number, dy: number) => sessionSend("move", [dx, dy]),
-    [sessionSend]
+    (dx: number, dy: number) => {
+      const m = optimisticRef.current ?? me;
+      if (!m || !me?.alive) return Promise.resolve();
+      if (Math.abs(dx) + Math.abs(dy) !== 1) return Promise.resolve();
+      const nx = m.x + dx;
+      const ny = m.y + dy;
+      if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) return Promise.resolve();
+      if (bombs.some((b) => b.live && b.x === nx && b.y === ny)) {
+        setError("tile has a live bomb");
+        return Promise.resolve();
+      }
+      setOptimistic({ x: nx, y: ny });
+      return sessionSend("move", [dx, dy]).catch((e) => {
+        setOptimistic(null);
+        throw e;
+      });
+    },
+    [sessionSend, me, bombs, setOptimistic]
   );
+
+  /**
+   * Path move: a multi-cell route in ONE transaction. Simulated locally
+   * step-by-step (same rules as the contract), rendered instantly, then
+   * submitted via movePath. Atomic on-chain: the first bad step reverts
+   * everything, and the next sync reconciles the render.
+   */
+  const movePath = useCallback(
+    (cells: { x: number; y: number }[]) => {
+      const m = optimisticRef.current ?? me;
+      if (!m || !me?.alive) return Promise.resolve();
+      if (cells.length === 0 || cells.length > MAX_PATH_STEPS)
+        return Promise.resolve();
+      let cx = m.x;
+      let cy = m.y;
+      const deltas: number[] = [];
+      for (const c of cells) {
+        const dx = c.x - cx;
+        const dy = c.y - cy;
+        if (Math.abs(dx) + Math.abs(dy) !== 1) {
+          setError("path steps must be orthogonal");
+          return Promise.resolve();
+        }
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) {
+          setError("path leaves the arena");
+          return Promise.resolve();
+        }
+        if (bombs.some((b) => b.live && b.x === nx && b.y === ny)) {
+          setError("path crosses a live bomb");
+          return Promise.resolve();
+        }
+        deltas.push(dx, dy);
+        cx = nx;
+        cy = ny;
+      }
+      setOptimistic({ x: cx, y: cy });
+      return sessionSend("movePath", [deltas]).catch((e) => {
+        setOptimistic(null);
+        throw e;
+      });
+    },
+    [sessionSend, me, bombs, setOptimistic]
+  );
+
   const plantBomb = useCallback(() => sessionSend("plantBomb", []), [sessionSend]);
   const poke = useCallback(() => write("poke", "poke"), [write]);
 
@@ -472,22 +575,33 @@ export function useViper() {
     }
   }, [session, write]);
 
-  const me = players.find(
-    (p) => address && p.address.toLowerCase() === address.toLowerCase()
-  );
-  const joined = !!me;
-  const myTurnAlive = !!me?.alive;
+  // Players as rendered: our own tile uses the optimistic position while a
+  // move is unconfirmed, flagged so the grid can show it as in-flight.
+  const displayPlayers: PlayerState[] =
+    optimisticPos && address
+      ? players.map((p) =>
+          p.address.toLowerCase() === address.toLowerCase() && p.alive
+            ? { ...p, x: optimisticPos.x, y: optimisticPos.y, optimistic: true }
+            : p
+        )
+      : players;
+  const selfEntry = address
+    ? displayPlayers.find(
+        (p) => p.address.toLowerCase() === address.toLowerCase()
+      )
+    : undefined;
+  const selfPos = selfEntry ? { x: selfEntry.x, y: selfEntry.y } : null;
 
   return {
     ready: isDeployed,
     isConnected, address,
     phase, matchId, lobbyEndsAt, liveEndsAt, blockNumber,
-    players, bombs, pot, aliveCount,
+    players: displayPlayers, bombs, pot, aliveCount,
     entryFee, tokenSymbol, tokenDecimals,
     flashes, result, pending, error,
     pendingWithdrawal,
-    joined, myTurnAlive, me,
-    join, joinFast, startMatch, move, plantBomb, poke, claimWinnings, sync,
+    joined, myTurnAlive, me, selfPos,
+    join, joinFast, startMatch, move, movePath, plantBomb, poke, claimWinnings, sync,
     // Session-key fast play.
     session,
     sessionLive: isSessionLive(session),

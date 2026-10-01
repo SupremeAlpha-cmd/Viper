@@ -34,12 +34,21 @@ export function Chrome({ children }: { children: React.ReactNode }) {
           />
           <span className="font-pixel text-sm text-white">VIPER</span>
         </Link>
-        <nav className="hidden gap-6 text-xs font-bold uppercase tracking-widest text-white/80 md:flex">
+        <nav className="hidden gap-5 text-xs font-bold uppercase tracking-widest text-white/80 lg:flex">
+          <Link href="/snake" className="hover:text-white">
+            Snake
+          </Link>
           <Link href="/bomber" className="hover:text-white">
             Bomber
           </Link>
+          <Link href="/chess" className="hover:text-white">
+            Chess
+          </Link>
           <Link href="/snakes-ladders" className="hover:text-white">
             Snakes & Ladders
+          </Link>
+          <Link href="/squad-game" className="hover:text-white">
+            Squad Game
           </Link>
         </nav>
         <ConnectButton />

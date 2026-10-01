@@ -1,0 +1,208 @@
+export const doubleOrNothingAbi = [
+  {
+    type: "function",
+    name: "stakeToken",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "treasury",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "bankroll",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "maxStake",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "fund",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "flipCommit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "stake", type: "uint256" },
+      { name: "commitment", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "flipCommitWithSession",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "stake", type: "uint256" },
+      { name: "commitment", type: "bytes32" },
+      { name: "sessionKey", type: "address" },
+      { name: "expiry", type: "uint64" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "flipReveal",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "choice", type: "uint8" },
+      { name: "secret", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "refund",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "authorizeSession",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "sessionKey", type: "address" },
+      { name: "expiry", type: "uint64" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "revokeSession",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "sessionKey", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "flips",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [
+      { name: "commitment", type: "bytes32" },
+      { name: "stake", type: "uint256" },
+      { name: "commitBlock", type: "uint256" },
+      { name: "active", type: "bool" },
+    ],
+  },
+  {
+    type: "function",
+    name: "getFlip",
+    stateMutability: "view",
+    inputs: [{ name: "player", type: "address" }],
+    outputs: [
+      { name: "commitment", type: "bytes32" },
+      { name: "stake", type: "uint256" },
+      { name: "commitBlock", type: "uint256" },
+      { name: "active", type: "bool" },
+    ],
+  },
+  {
+    type: "function",
+    name: "pendingWithdrawals",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "isSessionValid",
+    stateMutability: "view",
+    inputs: [{ name: "sessionKey", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "getCoin",
+    stateMutability: "view",
+    inputs: [
+      { name: "player", type: "address" },
+      { name: "secret", type: "bytes32" },
+      { name: "commitBlock", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "event",
+    name: "FlipCommitted",
+    inputs: [
+      { name: "player", type: "address", indexed: true },
+      { name: "commitment", type: "bytes32", indexed: false },
+      { name: "stake", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "FlipRevealed",
+    inputs: [
+      { name: "player", type: "address", indexed: true },
+      { name: "won", type: "bool", indexed: false },
+      { name: "payout", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "BankrollFunded",
+    inputs: [
+      { name: "funder", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Refunded",
+    inputs: [
+      { name: "player", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "WithdrawalCredited",
+    inputs: [
+      { name: "to", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "SessionAuthorized",
+    inputs: [
+      { name: "player", type: "address", indexed: true },
+      { name: "sessionKey", type: "address", indexed: true },
+      { name: "expiry", type: "uint64", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "SessionRevoked",
+    inputs: [
+      { name: "player", type: "address", indexed: true },
+      { name: "sessionKey", type: "address", indexed: true },
+    ],
+  },
+] as const;

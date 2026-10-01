@@ -9,8 +9,25 @@ export const isDeployed =
 
 export const viperAbi = abi as any;
 
+/** ViperDoubleOrNothing contract. Set NEXT_PUBLIC_VIPER_DON after deployment. */
+export const VIPER_DON_ADDRESS = (process.env.NEXT_PUBLIC_VIPER_DON ||
+  process.env.NEXT_PUBLIC_VIPER_DOUBLE_OR_NOTHING ||
+  "0x0000000000000000000000000000000000000000") as `0x${string}`;
+
+export const isDonDeployed =
+  VIPER_DON_ADDRESS !== "0x0000000000000000000000000000000000000000";
+
+export { doubleOrNothingAbi } from "./donAbi";
+
 /** Minimal ERC20 surface needed for entry-fee approval. */
 export const erc20Abi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
   {
     type: "function",
     name: "allowance",

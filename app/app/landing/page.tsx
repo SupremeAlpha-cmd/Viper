@@ -290,15 +290,36 @@ export default function LandingPage() {
           </Card>
 
           {/* upcoming games */}
-          {UPCOMING.map((g) => (
-            <Card key={g.title}>
-              <p className={`${pixel.className} mb-3 text-center text-xs`}>{g.title}</p>
-              <GlyphTile glyph={g.glyph} bg={g.tileBg} />
-              <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
-                {g.desc}
-              </p>
-            </Card>
-          ))}
+          {UPCOMING.map((g) => {
+            const isDon = g.title === "DOUBLE OR NOTHING";
+            const content = (
+              <>
+                <p className={`${pixel.className} mb-3 text-center text-xs`}>{g.title}</p>
+                <GlyphTile glyph={g.glyph} bg={g.tileBg} />
+                <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
+                  {g.desc}
+                </p>
+                {isDon && (
+                  <div className="mt-3 text-center">
+                    <span
+                      className={`${pixel.className} inline-block rounded-xl border-2 px-3 py-1 text-[9px]`}
+                      style={{ borderColor: NAVY, background: "#fbbf24", color: NAVY }}
+                    >
+                      ▶ PLAY NOW
+                    </span>
+                  </div>
+                )}
+              </>
+            );
+
+            return isDon ? (
+              <Link key={g.title} href="/double-or-nothing" className="block transition hover:scale-[1.02]">
+                <Card>{content}</Card>
+              </Link>
+            ) : (
+              <Card key={g.title}>{content}</Card>
+            );
+          })}
         </div>
       </section>
 

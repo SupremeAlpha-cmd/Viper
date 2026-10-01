@@ -6,3 +6,4 @@ app/node_modules/
 app/.next/
 app/.env.local
 .DS_Store
+*.tsbuildinfo

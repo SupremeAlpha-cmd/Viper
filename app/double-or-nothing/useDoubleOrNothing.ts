@@ -196,7 +196,10 @@ export function useDoubleOrNothing() {
       setStatusMessage("Authorizing Fast Play session key…");
       const { privateKey, session: newSession } = createSessionKey();
       sessionPrivRef.current = privateKey;
-      sessionSenderRef.current = new SessionSender(privateKey, publicClient);
+      sessionSenderRef.current = new SessionSender(privateKey, publicClient, {
+        address: VIPER_DON_ADDRESS,
+        abi: doubleOrNothingAbi,
+      });
 
       // Submit authorization tx via user wallet
       const hash = await walletClient.writeContract({

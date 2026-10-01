@@ -30,7 +30,56 @@ function Kicker({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ---------- mini arena snapshot ---------- */
+function Badge({ children, color }: { children: React.ReactNode; color: string }) {
+  return (
+    <span
+      className={`${pixel.className} inline-block rounded-full border-[3px] px-4 py-1 text-[9px]`}
+      style={{ borderColor: NAVY, background: color, color: NAVY }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/* ---------- mini snake snapshot ---------- */
+function MiniSnake() {
+  const path: [number, number][] = [
+    [7, 1], [7, 2], [7, 3], [6, 3], [5, 3], [5, 4], [5, 5],
+    [4, 5], [3, 5], [3, 6], [3, 7], [4, 7], [5, 7], [5, 8],
+  ];
+  const coins: [number, number][] = [[2, 2], [8, 8], [1, 9], [9, 3], [2, 7]];
+  const inPath = new Set(path.map(([r, c]) => r * 11 + c));
+  const head = 5 * 11 + 8;
+  const coinSet = new Set(coins.map(([r, c]) => r * 11 + c));
+  const cells = [];
+  for (let i = 0; i < 121; i++) {
+    let bg = "#0e1533";
+    if (i % 2 === 0 && Math.floor(i / 11) % 2 === 0) bg = "#131c40";
+    let extra = "";
+    if (inPath.has(i)) {
+      const seg = path.findIndex(([r, c]) => r * 11 + c === i);
+      bg = seg % 2 === 0 ? "#22c55e" : "#16a34a";
+      if (i === head) bg = "#4ade80";
+    }
+    if (coinSet.has(i)) {
+      bg = "#f59e0b";
+      extra = " rounded-full";
+    }
+    cells.push(
+      <div key={i} className={`aspect-square rounded-[2px]${extra}`} style={{ background: bg }} />
+    );
+  }
+  return (
+    <div
+      className="grid grid-cols-11 gap-[2px] rounded-xl border-[3px] p-2"
+      style={{ borderColor: NAVY, background: "#070b22" }}
+    >
+      {cells}
+    </div>
+  );
+}
+
+/* ---------- mini arena snapshot (bomber) ---------- */
 function MiniArena({ seed }: { seed: number }) {
   const cells = [];
   for (let i = 0; i < 121; i++) {
@@ -49,6 +98,18 @@ function MiniArena({ seed }: { seed: number }) {
       style={{ borderColor: NAVY, background: "#070b22" }}
     >
       {cells}
+    </div>
+  );
+}
+
+/* ---------- chunky glyph tile for upcoming games ---------- */
+function GlyphTile({ glyph, bg }: { glyph: string; bg: string }) {
+  return (
+    <div
+      className="flex aspect-[4/3] items-center justify-center rounded-xl border-[3px] text-6xl"
+      style={{ borderColor: NAVY, background: bg }}
+    >
+      {glyph}
     </div>
   );
 }
@@ -83,11 +144,38 @@ function Cartridge({ children }: { children: React.ReactNode }) {
         {children}
       </div>
       <p className={`${pixel.className} mt-4 text-center text-sm`} style={{ color: NAVY }}>
-        ★ VIPER ★
+        ★ VIPER ARCADE ★
       </p>
     </div>
   );
 }
+
+const UPCOMING = [
+  {
+    glyph: "♞",
+    tileBg: "#e0e7ff",
+    title: "CHESS",
+    desc: "Team chess. Stake on your side and call the moves — the winning team splits the pot.",
+  },
+  {
+    glyph: "🪜",
+    tileBg: "#fef3c7",
+    title: "SNAKES & LADDERS",
+    desc: "Four team colors, one board. Race to square 100 — the winning team takes the pot.",
+  },
+  {
+    glyph: "🎲",
+    tileBg: "#fce7f3",
+    title: "DOUBLE OR NOTHING",
+    desc: "Pure chance. Stake your VIPER, call it — double up or lose it all.",
+  },
+  {
+    glyph: "🦑",
+    tileBg: "#e0f2fe",
+    title: "SQUAD GAME",
+    desc: "Survival rounds with a growing pot. Outlast the lobby — the last ones standing split it.",
+  },
+];
 
 export default function LandingPage() {
   return (
@@ -116,25 +204,23 @@ export default function LandingPage() {
       {/* hero */}
       <section className="mx-auto max-w-5xl px-4 pb-16 pt-12 text-center">
         <p className={`${pixel.className} mb-6 text-lg`} style={{ color: NAVY }}>
-          Welcome to the New
+          Welcome to the
         </p>
         <Cartridge>
           <div className="relative p-4">
-            <MiniArena seed={7} />
+            <MiniSnake />
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <p className={`${pixel.className} text-center text-xl leading-relaxed text-white drop-shadow-[3px_3px_0_rgba(11,18,48,1)]`}>
-                DROP IN.
+                THE ON-CHAIN
                 <br />
-                BLOW UP.
-                <br />
-                TAKE THE POT.
+                ARCADE.
               </p>
             </div>
           </div>
         </Cartridge>
         <p className="mx-auto mt-8 max-w-xl text-sm font-medium leading-relaxed" style={{ color: NAVY }}>
-          A real-time multiplayer bomber arena, fully on-chain. Sixty-second lobbies,
-          sudden-death overtime, and the last viper standing takes the pot.
+          Six games. One VIPER token. Stake it, outplay everyone, and take the pot —
+          every match settled on-chain on Robinhood Chain.
         </p>
         <Link
           href="/"
@@ -145,19 +231,45 @@ export default function LandingPage() {
         </Link>
       </section>
 
-      {/* game carousel */}
+      {/* game lineup */}
       <section id="games" className="mx-auto max-w-5xl px-4 py-12">
-        <Kicker>Game carousel</Kicker>
+        <Kicker>The lineup</Kicker>
+
+        {/* featured: snake */}
+        <Card className="mb-6 flex flex-col gap-6 md:flex-row md:items-center">
+          <div className="w-full md:w-1/2">
+            <MiniSnake />
+          </div>
+          <div className="w-full md:w-1/2">
+            <Badge color="#fbbf24">FLAGSHIP</Badge>
+            <p className={`${pixel.className} my-4 text-xl`}>SNAKE</p>
+            <p className="text-sm font-medium leading-relaxed opacity-80">
+              A slither-style multiplayer arena. Eat coins, grow long, clip your rivals —
+              last one slithering takes the pot. Sign once, then play in real time.
+              No wallet popups mid-game.
+            </p>
+          </div>
+        </Card>
+
         <div className="grid gap-6 md:grid-cols-3">
-          {[
-            { seed: 1, title: "LOBBY", desc: "60 seconds. The lobby fills, the countdown runs, the gate slams shut." },
-            { seed: 42, title: "BATTLE", desc: "11×11 grid. Plant bombs, dodge blasts, chain-detonate your rivals." },
-            { seed: 99, title: "VICTORY", desc: "Last one alive takes the pot. Ties split it. All on-chain." },
-          ].map((g) => (
+          {/* bomber arena */}
+          <Card>
+            <p className={`${pixel.className} mb-3 text-center text-xs`}>BOMBER ARENA</p>
+            <MiniArena seed={42} />
+            <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
+              The original. 11×11 grid, 60-second lobbies — plant bombs, dodge blasts,
+              chain-detonate your rivals. Last one standing takes the pot.
+            </p>
+          </Card>
+
+          {/* upcoming games */}
+          {UPCOMING.map((g) => (
             <Card key={g.title}>
               <p className={`${pixel.className} mb-3 text-center text-xs`}>{g.title}</p>
-              <MiniArena seed={g.seed} />
-              <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">{g.desc}</p>
+              <GlyphTile glyph={g.glyph} bg={g.tileBg} />
+              <p className="mt-3 text-center text-xs font-medium leading-relaxed opacity-80">
+                {g.desc}
+              </p>
             </Card>
           ))}
         </div>
@@ -168,9 +280,9 @@ export default function LandingPage() {
         <Kicker>How it works</Kicker>
         <div className="grid gap-6 md:grid-cols-3">
           {[
-            { n: "01", title: "JOIN", desc: "Connect your wallet, stake VIPER, and jump into the 60-second lobby." },
-            { n: "02", title: "OUTLIVE", desc: "Dodge explosions, trap rivals, and be the last viper breathing." },
-            { n: "03", title: "TAKE THE POT", desc: "Winner takes 95% of the pot. The arena keeps 5%. Instant, on-chain." },
+            { n: "01", title: "STAKE", desc: "Connect your wallet, stake VIPER, and enter any game in the arcade." },
+            { n: "02", title: "OUTPLAY", desc: "Sign once, then play in real time. No wallet popups in the middle of a match." },
+            { n: "03", title: "TAKE THE POT", desc: "Winners take 95% of the pot. The arcade keeps 5%. Settled on-chain, instantly." },
           ].map((s) => (
             <Card key={s.n} className="text-center">
               <p className={`${pixel.className} text-2xl`} style={{ color: "#2e7cf6" }}>{s.n}</p>
@@ -185,7 +297,7 @@ export default function LandingPage() {
       <section className="mx-auto max-w-5xl px-4 py-12">
         <Kicker>Built on</Kicker>
         <div className="flex flex-wrap items-center justify-center gap-4">
-          {["ROBINHOOD CHAIN", "PONS", "VIPER ARENA"].map((p) => (
+          {["ROBINHOOD CHAIN", "PONS", "VIPER"].map((p) => (
             <span
               key={p}
               className={`${pixel.className} rounded-full border-[3px] bg-white px-6 py-3 text-[10px]`}
@@ -224,12 +336,12 @@ export default function LandingPage() {
             </li>
             <li className="flex items-center gap-3">
               <span className="h-4 w-4 rounded-sm border-2" style={{ borderColor: NAVY, background: NAVY }} />
-              5% — Arena fee
+              5% — Arcade fee
             </li>
           </ul>
         </Card>
         <p className="mt-4 text-center text-xs font-medium opacity-70">
-          Every match settles on-chain. No house edge beyond the 5% arena fee.
+          One token across every game. Every pot settles on-chain. No house edge beyond the 5% arcade fee.
         </p>
       </section>
 
@@ -245,7 +357,7 @@ export default function LandingPage() {
           className={`${pixel.className} inline-block rounded-2xl border-[3px] bg-white px-10 py-5 text-sm`}
           style={{ borderColor: NAVY, boxShadow: `8px 8px 0 ${NAVY}` }}
         >
-          ENTER THE ARENA →
+          ENTER THE ARCADE →
         </Link>
       </section>
 
@@ -256,7 +368,7 @@ export default function LandingPage() {
           <span className={`${pixel.className} text-xs`}>VIPER</span>
         </div>
         <p className="mt-3 text-xs font-medium opacity-70">
-          © 2026 Viper. A fully on-chain bomber arena on Robinhood Chain.
+          © 2026 Viper. An on-chain arcade on Robinhood Chain.
         </p>
       </footer>
     </div>

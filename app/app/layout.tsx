@@ -14,14 +14,14 @@ const pixel = Press_Start_2P({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://viper-blast.xyz"),
-  title: "Viper — on-chain bomber arena",
+  title: "Viper — on-chain arcade",
   description:
-    "Real-time multiplayer bomber arena on Robinhood Chain. Every move, bomb and explosion is an on-chain transaction.",
+    "Viper is an on-chain arcade on Robinhood Chain. Snake, Bomber Arena, Chess, Snakes & Ladders and more — one VIPER token, winner takes the pot.",
   icons: { icon: "/logo.png" },
   openGraph: {
-    title: "Viper — on-chain bomber arena",
+    title: "Viper — on-chain arcade",
     description:
-      "Real-time multiplayer bomber arena on Robinhood Chain. Last one standing takes the pot.",
+      "Six games. One VIPER token. Stake it, outplay everyone, and take the pot — every match settled on-chain.",
     images: ["/opengraph-image.png"],
   },
 };

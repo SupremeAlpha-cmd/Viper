@@ -259,33 +259,6 @@ contract ViperSnakeTest is Test {
         assertGe(game.getCoins().length, 8);
     }
 
-    // ---- boost ----
-
-    function testBoostMovesTwoCellsAndBurnsLength() public {
-        _joinStart(2);
-        vm.prank(A);
-        game.setBoost(true);
-        _tick(); // boosted tick: 2 steps, burn 1
-        (uint8 x, uint8 y) = _head(A);
-        assertEq(x, 4); // (2,2) -> (4,2): two cells
-        assertEq(y, 2);
-        uint256 len = game.getSegments(A).length;
-        // 3 -> 2 without a coin, 3 with one eaten en route (deterministic).
-        assertTrue(len == 2 || len == 3, "bad boost length");
-    }
-
-    function testBoostDisabledAtLengthOne() public {
-        _joinStart(2);
-        vm.prank(A);
-        game.setBoost(true);
-        _tick(); // length 3 -> 2 (or 3 with coin)
-        _tick(); // length 2 -> 1 (or 2 with coin)
-        (uint8 x1,) = _head(A);
-        _tick(); // at length 1: boost can't apply, single step
-        (uint8 x2,) = _head(A);
-        assertEq(x2, x1 + 1); // exactly one cell
-    }
-
     // ---- coin eating (slither-style scatter) ----
 
     function testCoinEatingGrowsScoreAndLength() public {

@@ -360,14 +360,13 @@ export function useSnake() {
         setTopUp(null);
         setError("Fast-play session ended — steering will ask your wallet again. Rejoin the next lobby for zero pop-ups.");
       }
-      await write(fn === "setDirection" ? "steer" : "boost", fn, args);
+      await write("steer", fn, args);
     },
     [session, write, scheduleSync]
   );
 
   /** Commit a heading (0=up 1=right 2=down 3=left). Applies next tick. */
   const setDirection = useCallback((dir: number) => sessionSend("setDirection", [dir]), [sessionSend]);
-  const setBoost = useCallback((b: boolean) => sessionSend("setBoost", [b]), [sessionSend]);
 
   const joinFast = useCallback(async () => {
     if (!walletClient || !address || !publicClient || !stakeToken) return;
@@ -451,7 +450,7 @@ export function useSnake() {
     deaths, result, pending, error,
     pendingWithdrawal,
     joined, myTurnAlive, me,
-    join, joinFast, startMatch, setDirection, setBoost, poke, claimWinnings, sync,
+    join, joinFast, startMatch, setDirection, poke, claimWinnings, sync,
     session,
     sessionLive: isSessionLive(session),
     topUp,

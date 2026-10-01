@@ -163,9 +163,8 @@ function LobbyCard({ v }: { v: ReturnType<typeof useSnake> }) {
 export function SnakeScreen() {
   const v = useSnake();
   const [dismissed, setDismissed] = useState<number | null>(null);
-  const [boosting, setBoosting] = useState(false);
 
-  // Keyboard: arrows/WASD steer, hold Shift to boost.
+  // Keyboard: arrows/WASD steer.
   useEffect(() => {
     if (v.phase !== "live" || !v.myTurnAlive) return;
     const onKey = (e: KeyboardEvent) => {
@@ -176,34 +175,19 @@ export function SnakeScreen() {
         arrowdown: 2, s: 2,
         arrowleft: 3, a: 3,
       };
-      if (k === "shift") {
-        e.preventDefault();
-        setBoosting(true);
-        v.setBoost(true).catch(() => {});
-        return;
-      }
       if (dirs[k] !== undefined) {
         e.preventDefault();
         v.setDirection(dirs[k]).catch(() => {});
       }
     };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "shift") {
-        setBoosting(false);
-        v.setBoost(false).catch(() => {});
-      }
-    };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKeyUp);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKeyUp);
     };
-  }, [v.phase, v.myTurnAlive, v.setDirection, v.setBoost]);
+  }, [v.phase, v.myTurnAlive, v.setDirection]);
 
   useEffect(() => {
     setDismissed(null);
-    setBoosting(false);
   }, [v.matchId]);
 
   if (!v.ready) {
@@ -234,7 +218,6 @@ export function SnakeScreen() {
         accent={GREEN}
         rules={[
           "Steer with arrows/WASD — your turn commits and applies on the next block.",
-          "Hold SHIFT to boost: 2× speed, but it burns 1 length per tick.",
           "Eat coins to grow longer and stack score.",
           "Die if you hit a wall, a body, or a longer snake head-on. Dead snakes scatter as coins — slither over them.",
           "1 tick = 1 block. Last snake alive wins; on timeout the pot splits by score.",
@@ -365,24 +348,11 @@ export function SnakeScreen() {
                 <DPadBtn label="↓" onPress={() => v.setDirection(2).catch(() => {})} disabled={!!v.pending} />
                 <DPadBtn label="→" onPress={() => v.setDirection(1).catch(() => {})} disabled={!!v.pending} />
               </div>
-              <button
-                onPointerDown={(e) => { e.preventDefault(); setBoosting(true); v.setBoost(true).catch(() => {}); }}
-                onPointerUp={() => { setBoosting(false); v.setBoost(false).catch(() => {}); }}
-                onPointerLeave={() => { if (boosting) { setBoosting(false); v.setBoost(false).catch(() => {}); } }}
-                className="font-pixel flex h-24 w-24 items-center justify-center rounded-full border-4 text-[11px] text-white transition active:scale-95"
-                style={{
-                  borderColor: boosting ? GREEN : "#26314d",
-                  background: boosting ? "#16a34a" : "#b45309",
-                  boxShadow: boosting ? `0 0 24px ${GREEN}66` : "none",
-                }}
-              >
-                BOOST
-              </button>
             </div>
           )}
           {v.myTurnAlive && (
             <p className="mt-4 text-center text-xs font-bold text-zinc-500">
-              Arrows / WASD to steer · hold SHIFT to boost · every action is an on-chain transaction
+              Arrows / WASD to steer · every action is an on-chain transaction
               {v.sessionLive && <span className="text-green-400"> · ⚡ fast play: no pop-ups</span>}
               {v.pending && <span style={{ color: GREEN }}> · confirming…</span>}
             </p>

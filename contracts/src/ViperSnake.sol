@@ -4,12 +4,12 @@ pragma solidity ^0.8.24;
 /// @title ViperSnake — slither-style multiplayer snake arena
 /// @notice Direction commits, not moves: every snake auto-advances one cell
 ///         per tick (1 tick = 1 block) in its current heading. Players only
-///         transact to TURN (setDirection) or toggle BOOST (setBoost) — a
+///         transact to TURN (setDirection) — a
 ///         straight-line run costs zero transactions. This is the fix for
 ///         "every step you stop and transact".
 ///
 ///         Session keys are the default path: joinWithSession authorizes a
-///         browser-held key once, then turns/boosts go through it with zero
+///         browser-held key once, then turns go through it with zero
 ///         wallet pop-ups (same SessionAuth pattern as ViperArena).
 ///
 ///         Staked in VIPER. Timed 60s lobbies -> live match -> last snake
@@ -67,7 +67,6 @@ contract ViperSnake {
     mapping(address => uint8) public direction; // current heading
     mapping(address => uint8) public pendingDir; // committed heading, applies next tick
     mapping(address => bool) public hasPendingDir;
-    mapping(address => bool) public boost; // boost flag, applies from next tick
     mapping(address => uint256) public score; // coins eaten — only set in tick processing
     mapping(address => uint256) public lastCommitTick; // one direction commit per tick
     /// @dev Packed xy cells (x << 8 | y), head-first. Head = segments[p][0].
@@ -92,8 +91,8 @@ contract ViperSnake {
     }
 
     /// @notice Browser-held session keys authorized for gameplay-only
-    ///         actions. A session key can never move funds: setDirection /
-    ///         setBoost resolve it to its player; everything else keys off
+    ///         actions. A session key can never move funds: setDirection
+    ///         resolves it to its player; everything else keys off
     ///         msg.sender.
     mapping(address => SessionAuth) public sessions;
 
@@ -105,7 +104,6 @@ contract ViperSnake {
     event MatchStarted(uint256 indexed matchId, uint256 playerCount);
     event MatchCancelled(uint256 indexed matchId);
     event DirectionCommitted(uint256 indexed matchId, address indexed player, uint8 direction);
-    event BoostSet(uint256 indexed matchId, address indexed player, bool boost);
     event CoinEaten(uint256 indexed matchId, address indexed player, uint8 x, uint8 y, uint256 score);
     event CoinSpawned(uint256 indexed matchId, uint8 x, uint8 y);
     event SnakeEliminated(uint256 indexed matchId, address indexed player);
@@ -148,7 +146,7 @@ contract ViperSnake {
 
     /// @notice Join and authorize a session key for gameplay in one tx.
     ///         The key is scoped to this match and expires at `expiry`.
-    ///         Turns and boosts via the key cost zero wallet pop-ups; the key
+    ///         Turns via the key cost zero wallet pop-ups; the key
     ///         pays its own gas from a native top-up the player sends it.
     function joinWithSession(address sessionKey, uint64 expiry) external nonReentrant {
         require(sessionKey != address(0), "zero session key");
@@ -246,23 +244,6 @@ contract ViperSnake {
         _settle();
     }
 
-    /// @notice Toggle boost. While on, the snake moves 2 cells per tick and
-    ///         burns 1 length per boosted tick (no boost at length 1).
-    ///         Slither-style: hold to go faster. Callable directly or via an
-    ///         authorized session key.
-    function setBoost(bool b) external nonReentrant {
-        require(phase == Phase.Live, "not live");
-        _advanceTicks();
-        address player = _resolvePlayer(msg.sender);
-        if (!alive[player]) {
-            _settle();
-            return;
-        }
-        boost[player] = b;
-        emit BoostSet(matchId, player, b);
-        _settle();
-    }
-
     /// @notice Advance the game clock: processes missed ticks (movement,
     ///         coins, collisions) in tick order, then settles. Anyone can
     ///         call this; keeps the match moving without keepers. Ticks per
@@ -328,7 +309,6 @@ contract ViperSnake {
             joined[p] = false;
             alive[p] = false;
             hasPendingDir[p] = false;
-            boost[p] = false;
             score[p] = 0;
             lastCommitTick[p] = 0;
             delete segments[p];
@@ -375,7 +355,7 @@ contract ViperSnake {
     }
 
     /// @dev One tick: apply pending directions, build the occupancy bitmap,
-    ///      move every snake (boost = 2 steps, burns 1 length), resolve
+    ///      move every snake, resolve
     ///      coins and collisions, respawn coins to COIN_TARGET.
     function _processTick() internal {
         // 1. Pending direction commits take effect now (never retroactively).
@@ -392,9 +372,9 @@ contract ViperSnake {
         //    tail, so hitting a growing tail is a missed kill, never an
         //    unfair death).
         TickCtx memory ctx;
-        // 2 head claims per player max (boost = 2 steps per tick).
-        ctx.newHeads = new uint16[](players.length * 2);
-        ctx.newHeadOwners = new address[](players.length * 2);
+        // 1 head claim per player max (single step per tick).
+        ctx.newHeads = new uint16[](players.length);
+        ctx.newHeadOwners = new address[](players.length);
         for (uint256 i = 0; i < players.length; i++) {
             address p = players[i];
             if (!alive[p]) continue;
@@ -409,15 +389,7 @@ contract ViperSnake {
         for (uint256 i = 0; i < players.length; i++) {
             address p = players[i];
             if (!alive[p]) continue;
-            bool boosted = boost[p] && segments[p].length > 1;
-            uint256 steps = boosted ? 2 : 1;
-            for (uint256 s = 0; s < steps && alive[p]; s++) {
-                _moveStep(p, ctx);
-            }
-            if (alive[p] && boosted) {
-                // Boost burn: 1 length per boosted tick.
-                _popTail(p);
-            }
+            _moveStep(p, ctx);
         }
 
         // 4. Keep COIN_TARGET coins on the board.

@@ -120,8 +120,7 @@ Mirrors ViperArena structure. New per-game state only:
   (assigned by join order), coins as distinct markers, eliminated snakes
   fade out. Interpolate movement between ticks so motion looks smooth
   even though state updates per block.
-- **Keyboard:** arrows/WASD to steer, hold Space (or double-tap on mobile)
-  to boost — costs length. Mobile: swipe to steer.
+- **Keyboard:** arrows/WASD to steer. Mobile: swipe to steer.
 - **Themed how-to on entry (arcade-wide pattern, Javin 2026-10-01):**
   entering any game shows a quick how-to overlay styled in that game's
   theme — Snake's reads like Snake, the arena's like the arena. Dismiss
@@ -144,8 +143,9 @@ Mirrors ViperArena structure. New per-game state only:
    Locked: 24×24 grid, 8 players, 1 tick per block.
 2. **Dead snake's body** — **scatters as coins**, slither.io-style.
    Rewards aggressive play, gives small snakes a comeback mechanic.
-3. **Boost** — **ships in v1** (Javin: "put everything out there, since
-   you'll do it now"). Slither-style: hold to go faster, costs length.
+3. **Boost** — **stripped** (Javin 2026-10-01: "strip snake boost").
+   Removed from the contract, tests, spec, and frontend. No speed
+   mechanic; every snake moves 1 cell per tick.
 
 1. **Feel tuning — grid size, player count, tick speed?** Proposed 24×24,
    8 players, 1 tick per block. Bigger grid = more room but emptier early
@@ -154,6 +154,4 @@ Mirrors ViperArena structure. New per-game state only:
 2. **What happens to a dead snake's body?** Vanish (simple), or scatter as
    coins slither.io-style (rewards aggressive play, comeback mechanic for
    small snakes)? Changes the strategy layer significantly.
-3. **Boost?** Slither.io's boost (hold to go faster, costs length) is the
-   skill move of the genre — but it's another on-chain action and more
-   gas. v1 without, or in from the start?
+3. **Boost?** — decided: stripped (2026-10-01). No boost in v1.

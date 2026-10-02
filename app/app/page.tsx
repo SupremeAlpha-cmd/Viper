@@ -195,6 +195,7 @@ const UPCOMING = [
     tileBg: "#e0e7ff",
     title: "CHESS",
     desc: "Team chess. Stake on your side and call the moves — the winning team splits the pot.",
+    href: "/chess",
   },
   {
     glyph: "🪜",
@@ -208,6 +209,7 @@ const UPCOMING = [
     tileBg: "#e0f2fe",
     title: "SQUAD GAME",
     desc: "Survival rounds with a growing pot. Outlast the lobby — the last ones standing split it.",
+    href: "/squad-game",
   },
 ];
 
@@ -272,6 +274,15 @@ export default function LandingPage() {
               A slither-style multiplayer arena. Eat coins, grow long, clip your rivals —
               last one slithering takes the pot.
             </p>
+            <div className="mt-3 text-center">
+              <Link
+                href="/snake"
+                className={`${pixel.className} inline-block rounded-xl border-2 px-3 py-1.5 text-[9px] text-white transition hover:opacity-90`}
+                style={{ borderColor: NAVY, background: NAVY }}
+              >
+                ▶ PLAY NOW
+              </Link>
+            </div>
           </Card>
 
           {/* bomber arena */}
@@ -282,6 +293,15 @@ export default function LandingPage() {
               The original. 11×11 grid, 60-second lobbies — plant bombs, dodge blasts,
               chain-detonate your rivals. Last one standing takes the pot.
             </p>
+            <div className="mt-3 text-center">
+              <Link
+                href="/bomber"
+                className={`${pixel.className} inline-block rounded-xl border-2 px-3 py-1.5 text-[9px] text-white transition hover:opacity-90`}
+                style={{ borderColor: NAVY, background: NAVY }}
+              >
+                ▶ PLAY NOW
+              </Link>
+            </div>
           </Card>
 
           {/* upcoming games */}

@@ -12,8 +12,12 @@ const DIRS = [
   [-1, 0],
 ];
 
-const MEME_TICKERS = ["RUG", "HONEYPOT", "DUMP", "SCAM", "PONZI", "MOON", "APE", "DEGEN"];
-const MEME_COLORS = ["#fbbf24", "#f87171", "#a78bfa", "#34d399", "#f472b6", "#60a5fa"];
+const COIN_TYPES = [
+  { symbol: "₿", bg: "#f7931a", fg: "#ffffff", name: "BTC" },  // Bitcoin
+  { symbol: "Ξ", bg: "#627eea", fg: "#ffffff", name: "ETH" },  // Ethereum
+  { symbol: "Ð", bg: "#c2a633", fg: "#ffffff", name: "DOGE" }, // Dogecoin
+  { symbol: "S", bg: "#9945ff", fg: "#ffffff", name: "SOL" },  // Solana
+];
 
 function shade(hex: string, amt: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -55,32 +59,33 @@ export function SnakeGrid({
       ctx.beginPath(); ctx.moveTo(0, i * cell); ctx.lineTo(size, i * cell); ctx.stroke();
     }
 
-    // Memecoins — each food is a little token with a ticker.
+    // Coins — popular crypto logos (big, recognizable).
     for (const c of coins) {
       const [x, y] = unpackCell(c);
       const cx = x * cell + cell / 2;
       const cy = y * cell + cell / 2;
-      const r = cell * 0.32;
-      const colorIdx = c % MEME_COLORS.length;
-      const ticker = MEME_TICKERS[c % MEME_TICKERS.length];
-      // Coin body.
-      ctx.fillStyle = MEME_COLORS[colorIdx];
+      const r = cell * 0.42;
+      const coin = COIN_TYPES[c % COIN_TYPES.length];
+      // Coin body with rim.
+      ctx.fillStyle = coin.bg;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(0,0,0,0.4)";
+      ctx.lineWidth = 2;
       ctx.stroke();
-      // $ symbol.
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.font = `bold ${Math.max(8, r * 0.9)}px sans-serif`;
+      // Inner ring.
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.78, 0, Math.PI * 2);
+      ctx.stroke();
+      // Symbol — large and bold.
+      ctx.fillStyle = coin.fg;
+      ctx.font = `bold ${r * 1.1}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("$", cx, cy + 1);
-      // Ticker label below.
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.font = `bold ${Math.max(6, cell * 0.16)}px monospace`;
-      ctx.fillText("$" + ticker, cx, cy + r + cell * 0.14);
+      ctx.fillText(coin.symbol, cx, cy + 1);
     }
 
     // Snakes: draw tails first so heads sit on top.

@@ -12,6 +12,9 @@ const DIRS = [
   [-1, 0],
 ];
 
+const MEME_TICKERS = ["RUG", "HONEYPOT", "DUMP", "SCAM", "PONZI", "MOON", "APE", "DEGEN"];
+const MEME_COLORS = ["#fbbf24", "#f87171", "#a78bfa", "#34d399", "#f472b6", "#60a5fa"];
+
 function shade(hex: string, amt: number): string {
   const n = parseInt(hex.slice(1), 16);
   const r = Math.max(0, Math.min(255, (n >> 16) + amt));
@@ -52,20 +55,32 @@ export function SnakeGrid({
       ctx.beginPath(); ctx.moveTo(0, i * cell); ctx.lineTo(size, i * cell); ctx.stroke();
     }
 
-    // Coins.
+    // Memecoins — each food is a little token with a ticker.
     for (const c of coins) {
       const [x, y] = unpackCell(c);
       const cx = x * cell + cell / 2;
       const cy = y * cell + cell / 2;
-      const r = cell * 0.28;
-      ctx.fillStyle = "#fbbf24";
+      const r = cell * 0.32;
+      const colorIdx = c % MEME_COLORS.length;
+      const ticker = MEME_TICKERS[c % MEME_TICKERS.length];
+      // Coin body.
+      ctx.fillStyle = MEME_COLORS[colorIdx];
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#fef3c7";
-      ctx.beginPath();
-      ctx.arc(cx - r * 0.3, cy - r * 0.3, r * 0.45, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // $ symbol.
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.font = `bold ${Math.max(8, r * 0.9)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("$", cx, cy + 1);
+      // Ticker label below.
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.font = `bold ${Math.max(6, cell * 0.16)}px monospace`;
+      ctx.fillText("$" + ticker, cx, cy + r + cell * 0.14);
     }
 
     // Snakes: draw tails first so heads sit on top.

@@ -176,7 +176,7 @@ export function SnakeDemo() {
             </div>
           </div>
           <p className="mt-4 text-center text-xs font-bold text-zinc-500">
-            Arrows / WASD or D-pad · eat <span style={{ color: "#fbbf24" }}>●</span> to grow · walls and your own body kill
+            Arrows / WASD or D-pad · eat memecoins to grow · walls and your own body kill
           </p>
         </>
       )}

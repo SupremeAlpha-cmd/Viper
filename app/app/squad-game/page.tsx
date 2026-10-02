@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { SquadGameScreen } from "../../components/SquadGameScreen";
-import { DemoLink } from "@/components/demo/DemoLink";
 
 export default function SquadGamePage() {
   return (
@@ -18,12 +17,7 @@ export default function SquadGamePage() {
           Big-lobby survival on-chain. 32 players, elimination rounds — miss the
           window or check in too slow and you're out. Last one standing takes the pot.
         </p>
-        <DemoLink
-          href="/squad-game/demo"
-          className="font-pixel mt-5 inline-block rounded-2xl border-2 border-[#3f1d24] bg-[#16090c] px-6 py-3 text-[11px] text-zinc-100 transition active:scale-[0.98] hover:border-[#ef4444]"
-        >
-          🎮 TRY SOLO DEMO — NO WALLET
-        </DemoLink>
+        {/* Demo hidden while Javin rethinks the red-light/green-light gameplay */}
       </div>
       <SquadGameScreen />
     </div>

@@ -1,372 +1,274 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SQUAD_COLORS, SQUAD_ACCENT, SQUAD_BG } from "../../lib/squad-game";
 
-const RED = SQUAD_ACCENT;
-const TRACK_LENGTH = 100;
-const BOT_NAMES = ["Viper_01", "xXslayer", "degen.eth", "0xghost", "moonbag", "rekt_ronin", "satoshi_jr", "ape_strong", "hogfather", "ngmi_nate", "diamond_d"];
+const RED = "#ef4444";
+const GREEN = "#22c55e";
+const NAVY = "#0b1230";
+const FINISH_M = 100;
+const SPEED = 12; // meters per second while holding
 
-interface Racer {
-  name: string;
-  pos: number;
-  alive: boolean;
-  isYou: boolean;
-  speed: number;      // units/sec during green
-  reaction: number;   // ms to stop after red (bots only)
-}
+type Phase = "idle" | "green" | "red" | "dead" | "finished";
 
-const freshRoster = (): Racer[] => [
-  { name: "YOU", pos: 0, alive: true, isYou: true, speed: 14, reaction: 0 },
-  ...BOT_NAMES.map((n) => ({
-    name: n,
-    pos: 0,
-    alive: true,
-    isYou: false,
-    speed: 8 + Math.random() * 8,       // 8-16 u/s
-    reaction: 200 + Math.random() * 800, // 200-1000ms to freeze
-  })),
-];
+const BEST_KEY = "squad-best-m";
 
-type Phase = "idle" | "green" | "red" | "over";
-
-/** Solo demo: REAL red-light/green-light. Hold to move during green, freeze on red. */
+/** Solo demo: Red Light Green Light. Hold to run, release on red. Reach 100m. */
 export function SquadDemo() {
-  const [roster, setRoster] = useState<Racer[]>(freshRoster);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [won, setWon] = useState<boolean | null>(null);
-  const [moving, setMoving] = useState(false);
-  const [toasts, setToasts] = useState<{ key: number; text: string }[]>([]);
-  const stateRef = useRef({ roster, phase, won, moving });
-  stateRef.current = { roster, phase, won, moving };
-  const toastKey = useRef(0);
-  const gameToken = useRef(0);
-  const rafRef = useRef(0);
+  const [holding, setHolding] = useState(false);
+  const [dist, setDist] = useState(0);
+  const [best, setBest] = useState(0);
+  const [time, setTime] = useState(0);
+  const stateRef = useRef({ phase, holding, dist, time });
+  stateRef.current = { phase, holding, dist, time };
+  const token = useRef(0);
+  const raf = useRef(0);
   const lastTs = useRef(0);
 
-  const pushToast = useCallback((text: string) => {
-    toastKey.current += 1;
-    const key = toastKey.current;
-    setToasts((t) => [...t.slice(-3), { key, text }]);
+  useEffect(() => {
+    try {
+      setBest(Number(localStorage.getItem(BEST_KEY) || 0));
+    } catch { /* ignore */ }
   }, []);
 
-  const endGame = useCallback((playerWon: boolean, reason: string) => {
-    gameToken.current += 1;
-    cancelAnimationFrame(rafRef.current);
-    setWon(playerWon);
-    setPhase("over");
-    setMoving(false);
-    pushToast(reason);
-  }, [pushToast]);
-
-  const switchLight = useCallback(() => {
-    const tk = gameToken.current;
-    const s = stateRef.current;
-    if (s.phase === "over") return;
-
-    if (s.phase === "green") {
-      // → RED LIGHT. Caught moving? You're out.
-      setPhase("red");
-      const youMoving = stateRef.current.moving;
-      const you = stateRef.current.roster.find((r) => r.isYou)!;
-
-      setRoster((rs) => {
-        // Bots: slow reactors get caught.
-        const caught = new Set<string>();
-        rs.forEach((r) => {
-          if (!r.alive || r.isYou) return;
-          // Bot was "moving" (all bots move during green); reaction roll.
-          if (Math.random() * 1000 > r.reaction + 400) {
-            // fast enough — survives
-          } else if (r.reaction > 650 && Math.random() < 0.35) {
-            caught.add(r.name);
-          }
-        });
-        if (you.alive && youMoving) caught.add("YOU");
-        return rs.map((r) => (caught.has(r.name) ? { ...r, alive: false } : r));
-      });
-
-      if (you.alive && youMoving) {
-        setTimeout(() => {
-          if (gameToken.current !== tk) return;
-          pushToast("🔴 CAUGHT MOVING — YOU'RE OUT");
-        }, 300);
+  const saveBest = useCallback((d: number) => {
+    setBest((b) => {
+      if (d > b) {
+        try { localStorage.setItem(BEST_KEY, String(Math.floor(d))); } catch { /* ignore */ }
+        return Math.floor(d);
       }
+      return b;
+    });
+  }, []);
 
-      // Check win/lose after red resolves.
+  const goRed = useCallback(() => {
+    const tk = token.current;
+    const s = stateRef.current;
+    if (s.phase !== "green") return;
+    setPhase("red");
+    // Caught holding?
+    if (s.holding) {
       setTimeout(() => {
-        if (gameToken.current !== tk) return;
-        const cur = stateRef.current;
-        const youAlive = cur.roster.find((r) => r.isYou)!.alive;
-        const botsAlive = cur.roster.filter((r) => !r.isYou && r.alive);
-        const youFinished = cur.roster.find((r) => r.isYou)!.pos >= TRACK_LENGTH;
-
-        if (!youAlive) {
-          endGame(false, "💀 ELIMINATED — you moved on red");
-        } else if (youFinished) {
-          endGame(true, "🏁 YOU CROSSED THE FINISH!");
-        } else if (botsAlive.length === 0) {
-          endGame(true, "👑 LAST ONE STANDING!");
-        } else {
-          // Back to green after a tense pause.
-          const redMs = 1200 + Math.random() * 1800;
-          setTimeout(() => {
-            if (gameToken.current !== tk) return;
-            setPhase("green");
-            pushToast("🟢 GREEN LIGHT — GO!");
-            scheduleSwitch();
-          }, redMs);
-        }
-      }, 800);
+        if (token.current !== tk) return;
+        setPhase("dead");
+        saveBest(stateRef.current.dist);
+        cancelAnimationFrame(raf.current);
+      }, 250);
+      return;
     }
-  }, [endGame, pushToast]);
-
-  const scheduleSwitch = useCallback(() => {
-    const tk = gameToken.current;
-    // Green lasts 1.5–4s (unpredictable).
-    const greenMs = 1500 + Math.random() * 2500;
+    // Survived — schedule next green (random 0.8–2.8s).
+    const redMs = 800 + Math.random() * 2000;
     setTimeout(() => {
-      if (gameToken.current !== tk) return;
-      if (stateRef.current.phase === "green") switchLight();
-    }, greenMs);
-  }, [switchLight]);
+      if (token.current !== tk) return;
+      if (stateRef.current.phase !== "red") return;
+      setPhase("green");
+      scheduleRed();
+    }, redMs);
+  }, [saveBest]);
 
-  // Game loop: move racers during green.
+  const scheduleRed = useCallback(() => {
+    const tk = token.current;
+    // Green lasts 1.2–4.5s. No countdown. Sudden.
+    const greenMs = 1200 + Math.random() * 3300;
+    setTimeout(() => {
+      if (token.current !== tk) return;
+      goRed();
+    }, greenMs);
+  }, [goRed]);
+
   const loop = useCallback((ts: number) => {
-    const tk = gameToken.current;
     const dt = Math.min(0.05, (ts - lastTs.current) / 1000 || 0.016);
     lastTs.current = ts;
     const s = stateRef.current;
 
-    if (s.phase === "green") {
-      setRoster((rs) => {
-        let changed = false;
-        const next = rs.map((r) => {
-          if (!r.alive || r.pos >= TRACK_LENGTH) return r;
-          // You move only while holding. Bots always move during green.
-          const isMoving = r.isYou ? s.moving : true;
-          if (!isMoving) return r;
-          changed = true;
-          return { ...r, pos: Math.min(TRACK_LENGTH, r.pos + r.speed * dt) };
-        });
-        return changed ? next : rs;
-      });
-
-      // Check if you finished.
-      const you = stateRef.current.roster.find((r) => r.isYou)!;
-      if (you.alive && you.pos >= TRACK_LENGTH) {
-        endGame(true, "🏁 YOU CROSSED THE FINISH!");
+    if (s.phase === "green" && s.holding) {
+      const nd = s.dist + SPEED * dt;
+      const nt = s.time + dt;
+      setDist(nd);
+      setTime(nt);
+      if (nd >= FINISH_M) {
+        token.current += 1;
+        cancelAnimationFrame(raf.current);
+        setPhase("finished");
+        saveBest(FINISH_M);
         return;
       }
-      // Check if any bot finished (they keep going).
-      const botFinished = stateRef.current.roster.some((r) => !r.isYou && r.alive && r.pos >= TRACK_LENGTH);
-      if (botFinished) {
-        // Bots finishing doesn't end it for you — keep going until you finish or die.
-      }
+    } else if (s.phase === "green") {
+      setTime((t) => t + dt);
     }
 
-    if (stateRef.current.phase !== "over") {
-      rafRef.current = requestAnimationFrame(loop);
+    if (stateRef.current.phase === "green" || stateRef.current.phase === "red") {
+      raf.current = requestAnimationFrame(loop);
     }
-  }, [endGame]);
+  }, [saveBest]);
 
   const start = useCallback(() => {
-    gameToken.current += 1;
-    const tk = gameToken.current;
-    const r = freshRoster();
-    setRoster(r);
-    setToasts([]);
-    setWon(null);
-    setMoving(false);
+    token.current += 1;
+    setDist(0);
+    setTime(0);
+    setHolding(false);
     setPhase("green");
-    pushToast("🟢 GREEN LIGHT — HOLD TO MOVE!");
     lastTs.current = 0;
-    rafRef.current = requestAnimationFrame((ts) => {
+    raf.current = requestAnimationFrame((ts) => {
       lastTs.current = ts;
       loop(ts);
     });
-    // Schedule first red light.
-    const greenMs = 2000 + Math.random() * 2000;
-    setTimeout(() => {
-      if (gameToken.current !== tk) return;
-      if (stateRef.current.phase === "green") switchLight();
-    }, greenMs);
-  }, [loop, switchLight, pushToast]);
+    scheduleRed();
+  }, [loop, scheduleRed]);
 
-  // Hold SPACE or press-and-hold button to move.
-  const setHold = useCallback((hold: boolean) => {
+  const setHold = useCallback((h: boolean) => {
     const s = stateRef.current;
-    if (s.phase !== "green") {
-      setMoving(false);
+    if (s.phase !== "green" && s.phase !== "red") return;
+    // Pressing during red = instant death (you moved).
+    if (h && s.phase === "red") {
+      token.current += 1;
+      cancelAnimationFrame(raf.current);
+      setPhase("dead");
+      saveBest(s.dist);
+      setHolding(false);
       return;
     }
-    const you = s.roster.find((r) => r.isYou)!;
-    if (!you.alive) {
-      setMoving(false);
-      return;
-    }
-    setMoving(hold);
-  }, []);
+    setHolding(h);
+  }, [saveBest]);
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !e.repeat) {
-        e.preventDefault();
-        setHold(true);
-      }
+    const dn = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !e.repeat) { e.preventDefault(); setHold(true); }
     };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        e.preventDefault();
-        setHold(false);
-      }
+    const up = (e: KeyboardEvent) => {
+      if (e.code === "Space") { e.preventDefault(); setHold(false); }
     };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("keydown", dn);
+    window.addEventListener("keyup", up);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("keydown", dn);
+      window.removeEventListener("keyup", up);
     };
   }, [setHold]);
 
   useEffect(() => () => {
-    gameToken.current += 1;
-    cancelAnimationFrame(rafRef.current);
+    token.current += 1;
+    cancelAnimationFrame(raf.current);
   }, []);
 
-  const you = roster.find((r) => r.isYou)!;
-  const aliveCount = roster.filter((r) => r.alive).length;
+  const pct = Math.min(100, (dist / FINISH_M) * 100);
+  const isGreen = phase === "green";
+  const isRed = phase === "red";
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border-2 px-4 py-3"
-        style={{ borderColor: "#3f1d24", background: SQUAD_BG }}>
-        <span className="font-pixel text-[10px]" style={{ color: RED }}>🎮 SOLO DEMO</span>
-        {phase === "green" && <span className="font-pixel animate-pulse text-[10px] text-green-400">🟢 GREEN LIGHT</span>}
-        {phase === "red" && <span className="font-pixel animate-pulse text-[10px]" style={{ color: RED }}>🔴 RED LIGHT — FREEZE!</span>}
-        <span className="font-pixel text-[10px]" style={{ color: RED }}>{aliveCount} ALIVE</span>
-        <span className="ml-auto text-xs font-bold text-zinc-500">no wallet · no stakes</span>
+    <div
+      className="min-h-[80vh] rounded-3xl border-[3px] transition-colors duration-200 select-none"
+      style={{
+        borderColor: NAVY,
+        background: phase === "green" ? "#052e16" : phase === "red" ? "#450a0a" : "#0b1230",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 pt-5">
+        <span className="font-pixel text-[10px] tracking-widest text-white/70">RED LIGHT · GREEN LIGHT</span>
+        <span className="font-pixel text-[10px] text-white/70">BEST: {best}m</span>
       </div>
 
-      {toasts.length > 0 && (
-        <div className="mb-4 space-y-1.5">
-          {toasts.map((t) => (
-            <div key={t.key} className="rounded-xl border border-[#3f1d24] bg-[#16090c] px-4 py-2 text-xs font-bold text-zinc-300">
-              {t.text}
-            </div>
-          ))}
-        </div>
-      )}
-
       {phase === "idle" && (
-        <div className="rounded-3xl border-2 p-8 text-center" style={{ borderColor: "#3f1d24", background: SQUAD_BG }}>
-          <div className="text-4xl">🦑</div>
-          <div className="font-pixel mt-3 text-sm leading-relaxed text-zinc-100">RED LIGHT, GREEN LIGHT</div>
-          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-zinc-400">
-            🟢 <span className="font-bold text-zinc-100">HOLD</span> SPACE or the button to run.
-            🔴 When it turns red, <span className="font-bold text-zinc-100">LET GO</span> —
-            caught moving and you're out. First to the finish wins.
+        <div className="px-6 py-16 text-center">
+          <div className="font-pixel text-3xl text-white">🔴 RED LIGHT</div>
+          <p className="mx-auto mt-4 max-w-sm text-sm leading-relaxed text-white/70">
+            Hold the button when the light is green. Release the instant it turns red.
+            Reach <span className="font-bold text-white">100m</span> to win.
           </p>
           <button
             onClick={start}
-            className="font-pixel mt-6 rounded-2xl px-8 py-4 text-sm text-black transition active:scale-[0.98]"
-            style={{ background: RED }}
+            className="font-pixel mt-8 rounded-2xl bg-white px-10 py-4 text-sm transition active:scale-95"
+            style={{ color: NAVY }}
           >
-            ▶ START DEMO
+            ▶ START GAME
           </button>
         </div>
       )}
 
-      {(phase === "green" || phase === "red") && (
-        <>
-          {/* Track */}
-          <div className="mb-5 rounded-3xl border-2 p-4" style={{ borderColor: "#3f1d24", background: SQUAD_BG }}>
-            <div className="relative h-64">
-              {/* Finish line */}
-              <div className="absolute top-0 bottom-0 right-2 w-1" style={{ background: "#fbbf24" }} />
-              <div className="absolute top-1 right-4 font-pixel text-[9px] text-yellow-400">FINISH</div>
-              {/* Start line */}
-              <div className="absolute top-0 bottom-0 left-2 w-1 bg-zinc-700" />
-              {/* Racers */}
-              {roster.map((r, i) => {
-                if (!r.alive && r.pos === 0) return null;
-                const leftPct = 4 + (r.pos / TRACK_LENGTH) * 90;
-                const topPct = 6 + (i % 12) * 7.5;
-                return (
-                  <div
-                    key={r.name}
-                    className="absolute flex items-center gap-1 transition-all duration-100"
-                    style={{ left: `${leftPct}%`, top: `${topPct}%`, opacity: r.alive ? 1 : 0.3 }}
-                  >
-                    <span
-                      className="inline-block h-3 w-3 rounded-full border"
-                      style={{
-                        background: SQUAD_COLORS[i % SQUAD_COLORS.length],
-                        borderColor: r.isYou ? "#fff" : "transparent",
-                        borderWidth: r.isYou ? 2 : 0,
-                      }}
-                    />
-                    <span className={`font-pixel text-[8px] ${r.isYou ? "text-white" : "text-zinc-400"}`}>
-                      {r.isYou ? "YOU" : r.name.slice(0, 8)}
-                      {!r.alive && " 💀"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+      {(isGreen || isRed) && (
+        <div className="px-6 py-8 text-center">
+          {/* Giant status */}
+          <div className="font-pixel text-5xl">
+            {isGreen ? <span className="text-green-400">🟢</span> : <span className="text-red-500">🔴</span>}
+          </div>
+          <div className={`font-pixel mt-3 text-2xl ${isGreen ? "text-green-300" : "text-red-400"}`}>
+            {isGreen ? "GREEN LIGHT" : "RED LIGHT"}
+          </div>
+          <div className="font-pixel mt-2 text-sm text-white/60">
+            {Math.floor(dist)}m / {FINISH_M}m · {time.toFixed(1)}s
           </div>
 
-          {/* Hold button */}
-          {you.alive && phase === "green" && (
-            <button
-              onPointerDown={(e) => { e.preventDefault(); setHold(true); }}
-              onPointerUp={() => setHold(false)}
-              onPointerLeave={() => setHold(false)}
-              onContextMenu={(e) => e.preventDefault()}
-              className={`font-pixel mb-5 w-full rounded-3xl py-8 text-base text-black transition select-none touch-none ${moving ? "scale-[0.98]" : ""}`}
-              style={{
-                background: moving ? "#22c55e" : RED,
-                boxShadow: moving ? `0 0 60px #22c55e88` : `0 0 40px ${RED}55`,
-              }}
+          {/* Progress track */}
+          <div className="relative mx-auto mt-8 h-4 max-w-md overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full transition-all duration-100"
+              style={{ width: `${pct}%`, background: isGreen ? GREEN : "#71717a" }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between max-w-md mx-auto">
+            <span className="font-pixel text-[9px] text-white/50">START</span>
+            {/* Runner */}
+            <span
+              className="text-2xl transition-all duration-100"
+              style={{ marginRight: `${100 - pct}%` }}
             >
-              {moving ? "🏃 RUNNING… LET GO ON RED!" : "👆 HOLD TO RUN"}
-            </button>
-          )}
-          {you.alive && phase === "red" && (
-            <div className="font-pixel mb-5 w-full rounded-3xl border-2 border-red-900 bg-[#1a0808] py-6 text-center text-sm animate-pulse" style={{ color: RED }}>
-              🔴 FROZEN — DON'T TOUCH ANYTHING
-            </div>
-          )}
-          {!you.alive && (
-            <div className="font-pixel mb-5 w-full rounded-3xl border-2 border-zinc-800 bg-[#0d0d12] py-6 text-center text-sm text-zinc-500">
-              💀 YOU'RE OUT — WATCH THE BOTS
-            </div>
-          )}
-        </>
+              {holding && isGreen ? "🏃" : "🧍"}
+            </span>
+            <span className="font-pixel text-[9px] text-white/50">🏁 FINISH</span>
+          </div>
+
+          {/* THE button */}
+          <button
+            onPointerDown={(e) => { e.preventDefault(); setHold(true); }}
+            onPointerUp={() => setHold(false)}
+            onPointerLeave={() => setHold(false)}
+            onPointerCancel={() => setHold(false)}
+            onContextMenu={(e) => e.preventDefault()}
+            className="font-pixel mt-10 w-full max-w-md rounded-3xl py-10 text-xl text-black transition active:scale-[0.98] touch-none"
+            style={{
+              background: isGreen ? (holding ? GREEN : "#bbf7d0") : RED,
+              boxShadow: isGreen ? `0 0 80px ${GREEN}66` : `0 0 80px ${RED}66`,
+              color: isGreen && !holding ? "#052e16" : "#000",
+            }}
+          >
+            {isGreen ? (holding ? "🏃 RUNNING…" : "HOLD TO RUN") : "⚠️ RELEASE NOW"}
+          </button>
+          <p className="mt-4 text-xs font-bold text-white/40">
+            Press-and-hold · or hold <span className="font-pixel text-[10px] text-white/60">SPACE</span>
+          </p>
+        </div>
       )}
 
-      {phase === "over" && (
-        <div className="mb-5 rounded-3xl border-2 p-8 text-center" style={{ borderColor: "#3f1d24", background: SQUAD_BG }}>
-          <div className="font-pixel text-lg leading-relaxed" style={{ color: RED }}>
-            {won ? "🏆 YOU SURVIVED!" : "💀 ELIMINATED"}
-          </div>
-          <p className="mt-3 text-sm text-zinc-400">
-            {won ? "First across the line. The real game pays the pot — this was practice." : "Caught moving on red. The doll has no mercy. Run it back!"}
-          </p>
+      {phase === "dead" && (
+        <div className="px-6 py-16 text-center">
+          <div className="text-6xl">💀</div>
+          <div className="font-pixel mt-4 text-2xl text-red-400">CAUGHT!</div>
+          <p className="mt-3 text-sm text-white/60">You moved during red light.</p>
+          <p className="font-pixel mt-2 text-xs text-white/50">{Math.floor(dist)}m · BEST {best}m</p>
           <button
             onClick={start}
-            className="font-pixel mt-6 rounded-2xl px-8 py-4 text-sm text-black transition active:scale-[0.98]"
-            style={{ background: RED }}
+            className="font-pixel mt-8 rounded-2xl bg-white px-10 py-4 text-sm transition active:scale-95"
+            style={{ color: NAVY }}
           >
-            PLAY AGAIN →
+            ↻ TRY AGAIN
           </button>
         </div>
       )}
 
-      {(phase === "green" || phase === "red") && (
-        <p className="mt-4 text-center text-xs font-bold text-zinc-500">
-          Hold <span className="font-pixel text-[10px] text-zinc-300">SPACE</span> or press-and-hold the button · release before red
-        </p>
+      {phase === "finished" && (
+        <div className="px-6 py-16 text-center">
+          <div className="text-6xl">🏁</div>
+          <div className="font-pixel mt-4 text-2xl text-green-300">YOU MADE IT!</div>
+          <p className="font-pixel mt-3 text-xs text-white/60">100m in {time.toFixed(1)}s</p>
+          <button
+            onClick={start}
+            className="font-pixel mt-8 rounded-2xl bg-white px-10 py-4 text-sm transition active:scale-95"
+            style={{ color: NAVY }}
+          >
+            ↻ PLAY AGAIN
+          </button>
+        </div>
       )}
     </div>
   );

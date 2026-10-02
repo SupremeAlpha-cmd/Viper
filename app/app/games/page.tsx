@@ -1,6 +1,5 @@
 import { Press_Start_2P } from "next/font/google";
 import Link from "next/link";
-import Image from "next/image";
 
 const pixel = Press_Start_2P({ weight: "400", subsets: ["latin"] });
 
@@ -81,26 +80,6 @@ const GAMES = [
 export default function GamesPage() {
   return (
     <div className="min-h-screen" style={{ background: SKY, color: NAVY }}>
-      {/* floating pill nav */}
-      <header className="sticky top-4 z-50 mx-auto flex w-[92%] max-w-5xl items-center justify-between rounded-full border-[3px] px-5 py-3"
-        style={{ borderColor: NAVY, background: NAVY, boxShadow: `4px 4px 0 rgba(11,18,48,0.35)` }}>
-        <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.png" alt="Viper logo" width={32} height={32} className="rounded-full" />
-          <span className={`${pixel.className} text-sm text-white`}>VIPER</span>
-        </Link>
-        <nav className="hidden gap-6 text-xs font-bold uppercase tracking-widest text-white/80 md:flex">
-          <Link href="/" className="hover:text-white">Home</Link>
-          <Link href="/games" className="text-white">Games</Link>
-        </nav>
-        <Link
-          href="/games"
-          className={`${pixel.className} rounded-full bg-white px-5 py-2 text-[10px]`}
-          style={{ color: NAVY }}
-        >
-          START PLAYING
-        </Link>
-      </header>
-
       <section className="mx-auto max-w-5xl px-4 py-12">
         <Kicker>The arcade lineup</Kicker>
         <h1 className={`${pixel.className} mb-8 text-center text-2xl leading-relaxed`}>

@@ -17,6 +17,7 @@ export function SnakesLaddersDemo() {
   const [turn, setTurn] = useState<Team>(Team.RED);
   const [lastRoll, setLastRoll] = useState<{ team: Team; dice: number; from: number; to: number; timestamp: number } | null>(null);
   const [winner, setWinner] = useState<Team | null>(null);
+  const [log, setLog] = useState<string[]>([]);
   const [rolling, setRolling] = useState(false);
   const stateRef = useRef({ positions, turn, winner });
   stateRef.current = { positions, turn, winner };
@@ -26,6 +27,7 @@ export function SnakesLaddersDemo() {
     setTurn(Team.RED);
     setLastRoll(null);
     setWinner(null);
+    setLog(["🎲 Demo race started — you're RED. Roll to begin!"]);
     setRolling(false);
   }, []);
 
@@ -55,6 +57,7 @@ export function SnakesLaddersDemo() {
       next[team] = to;
       setPositions(next);
       setLastRoll({ team, dice, from, to, timestamp: Date.now() });
+      setLog((l) => [`${TEAM_META[team].emoji} ${TEAM_META[team].name} rolled ${dice} → sq ${to}${note}`, ...l].slice(0, 5));
       setRolling(false);
       if (to >= WINNING_SQUARE) {
         setWinner(team);
@@ -110,32 +113,10 @@ export function SnakesLaddersDemo() {
         </p>
       )}
 
-      {lastRoll && !rolling && winner === null && (
-        <p className="text-center font-pixel text-sm" style={{ color: NAVY }}>
-          {lastRoll.team === Team.RED ? "YOU" : TEAM_META[lastRoll.team].name} ROLLED {lastRoll.dice}!
-        </p>
-      )}
-
-      {/* Progress card — visual race state, no reading required */}
-      <div className="rounded-2xl border-[3px] bg-white px-4 py-3 space-y-2" style={{ borderColor: NAVY, boxShadow: `4px 4px 0 ${NAVY}` }}>
-        {TEAMS.map((t) => {
-          const meta = TEAM_META[t];
-          const pos = positions[t];
-          const isTurn = turn === t && winner === null;
-          return (
-            <div key={t} className="flex items-center gap-2">
-              <span className="text-lg w-7 text-center">{meta.emoji}</span>
-              <div className="flex-1 h-4 rounded-full overflow-hidden" style={{ background: "#e8e4f5", border: `2px solid ${NAVY}` }}>
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${Math.min(100, pos)}%`, background: meta.color || BLUE }}
-                />
-              </div>
-              <span className="font-pixel text-[10px] w-10 text-right" style={{ color: NAVY }}>{pos}</span>
-              {isTurn && <span className="font-pixel text-[10px] animate-pulse" style={{ color: BLUE }}>◀</span>}
-            </div>
-          );
-        })}
+      <div className="rounded-2xl border-[3px] bg-white px-4 py-3" style={{ borderColor: NAVY, boxShadow: `4px 4px 0 ${NAVY}` }}>
+        {log.map((line, i) => (
+          <div key={i} className="text-xs font-semibold text-zinc-600" style={{ opacity: 1 - i * 0.18 }}>{line}</div>
+        ))}
       </div>
 
       {winner !== null && (

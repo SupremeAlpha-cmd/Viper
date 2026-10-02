@@ -29,6 +29,25 @@ export const localTestChain = defineChain({
   },
 });
 
-/** Active chain: anvil when local-test mode is on, Robinhood Chain otherwise. */
+/**
+ * Robinhood testnet — chain ID 46630. Enabled with NEXT_PUBLIC_RH_TESTNET=1.
+ * Used for the pre-launch gameplay preview (contracts from
+ * contracts/script/DeployTestnet.s.sol).
+ */
+export const robinhoodTestnet = defineChain({
+  id: 46630,
+  name: "Robinhood Testnet",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: ["https://rpc.testnet.chain.robinhood.com"] },
+  },
+  testnet: true,
+});
+
+/** Active chain: testnet when NEXT_PUBLIC_RH_TESTNET=1, anvil when NEXT_PUBLIC_LOCAL_TEST=1, Robinhood Chain otherwise. */
 export const activeChain =
-  process.env.NEXT_PUBLIC_LOCAL_TEST === "1" ? localTestChain : robinhoodChain;
+  process.env.NEXT_PUBLIC_RH_TESTNET === "1"
+    ? robinhoodTestnet
+    : process.env.NEXT_PUBLIC_LOCAL_TEST === "1"
+      ? localTestChain
+      : robinhoodChain;

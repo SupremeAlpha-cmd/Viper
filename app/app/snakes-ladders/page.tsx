@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SnakesLaddersGame } from "../../snakes-ladders/GameScreen";
 import { NAVY, BLUE } from "../../components/cartoon";
+import { DemoLink } from "@/components/demo/DemoLink";
 
 export default function SnakesLaddersPage() {
   return (
@@ -28,13 +29,13 @@ export default function SnakesLaddersPage() {
         >
           4 teams. 1 token per team. First to 100 wins 95% of the pot pro-rata.
         </p>
-        <Link
+        <DemoLink
           href="/snakes-ladders/demo"
           className="font-pixel mt-5 inline-block rounded-2xl border-[3px] bg-white px-6 py-3 text-[11px] transition active:translate-x-[2px] active:translate-y-[2px]"
           style={{ borderColor: NAVY, color: NAVY, boxShadow: `3px 3px 0 ${NAVY}` }}
         >
           🎮 TRY SOLO DEMO — NO WALLET
-        </Link>
+        </DemoLink>
       </div>
       <SnakesLaddersGame />
     </div>

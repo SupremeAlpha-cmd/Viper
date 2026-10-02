@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { GameScreen } from "../../components/GameScreen";
 import { NAVY, BLUE } from "../../components/cartoon";
+import { DemoLink } from "@/components/demo/DemoLink";
 
 export default function Page() {
   return (
@@ -29,13 +30,13 @@ export default function Page() {
           Real-time bomber battles, fully on-chain. Last one standing takes the
           pot.
         </p>
-        <Link
+        <DemoLink
           href="/bomber/demo"
           className="font-pixel mt-5 inline-block rounded-2xl border-[3px] bg-white px-6 py-3 text-[11px] transition active:translate-x-[2px] active:translate-y-[2px]"
           style={{ borderColor: NAVY, color: NAVY, boxShadow: `3px 3px 0 ${NAVY}` }}
         >
           🎮 TRY SOLO DEMO — NO WALLET
-        </Link>
+        </DemoLink>
       </div>
       <GameScreen />
     </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChessScreen } from "../../components/ChessScreen";
+import { DemoLink } from "@/components/demo/DemoLink";
 
 export default function ChessPage() {
   return (
@@ -17,12 +18,12 @@ export default function ChessPage() {
           Team chess, fully on-chain. Stake a seat on White or Black — anyone on
           your side may move. Winning side splits the pot.
         </p>
-        <Link
+        <DemoLink
           href="/chess/demo"
           className="font-pixel mt-5 inline-block rounded-2xl border-2 border-[#26314d] bg-[#131a2e] px-6 py-3 text-[11px] text-zinc-100 transition active:scale-[0.98] hover:border-[#6366f1]"
         >
           🎮 TRY SOLO DEMO — NO WALLET
-        </Link>
+        </DemoLink>
       </div>
       <ChessScreen />
     </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SnakeScreen } from "../../components/SnakeScreen";
+import { DemoLink } from "@/components/demo/DemoLink";
 
 export default function SnakePage() {
   return (
@@ -17,12 +18,12 @@ export default function SnakePage() {
           Slither-style snake battles, fully on-chain. 8 snakes, 1 tick per
           block — last one alive takes the pot.
         </p>
-        <Link
+        <DemoLink
           href="/snake/demo"
           className="font-pixel mt-5 inline-block rounded-2xl border-2 border-[#26314d] bg-[#131a2e] px-6 py-3 text-[11px] text-zinc-100 transition active:scale-[0.98] hover:border-[#22c55e]"
         >
           🎮 TRY SOLO DEMO — NO WALLET
-        </Link>
+        </DemoLink>
       </div>
       <SnakeScreen />
     </div>

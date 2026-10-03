@@ -34,6 +34,16 @@ export function Chrome({ children }: { children: React.ReactNode }) {
           />
           <span className="font-pixel text-sm text-white">VIPER</span>
         </Link>
+        {/* back to the games panel — always visible, esp. on mobile where the game nav is hidden */}
+        {pathname !== "/games" && (
+          <Link
+            href="/games"
+            aria-label="Back to all games"
+            className="font-pixel ml-2 shrink-0 rounded-full border-2 border-white/25 px-4 py-2 text-[10px] text-white transition active:scale-95 hover:border-white/70"
+          >
+            ← GAMES
+          </Link>
+        )}
         <nav className="hidden gap-5 text-xs font-bold uppercase tracking-widest text-white/80 lg:flex">
           <Link href="/snake" className="hover:text-white">
             Snake

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SnakeGrid } from "../SnakeGrid";
 import { SNAKE_GRID, SNAKE_COLORS, DIRS } from "../../lib/snake";
 import type { SnakePlayer } from "../../lib/useSnake";
+import { DemoNameInput } from "./DemoNameInput";
+import { submitScore } from "../../lib/leaderboard";
 
 const GREEN = "#22c55e";
 const BG = "#0b1020";
@@ -47,6 +49,7 @@ export function SnakeDemo() {
   const [best, setBest] = useState(0);
   const stateRef = useRef({ segs, dir, foods, score, alive, started });
   stateRef.current = { segs, dir, foods, score, alive, started };
+  const deathSubmitted = useRef(false);
 
   const restart = useCallback(() => {
     setSegs([pack(12, 12), pack(11, 12), pack(10, 12)]);
@@ -56,6 +59,7 @@ export function SnakeDemo() {
     setScore(0);
     setAlive(true);
     setStarted(true);
+    deathSubmitted.current = false;
   }, []);
 
   const steer = useCallback((d: number) => {
@@ -124,8 +128,17 @@ export function SnakeDemo() {
 
   const player: SnakePlayer = { address: SELF, segments: segs, dir, score, alive };
 
+  // Submit final score to the daily leaderboard once per death.
+  useEffect(() => {
+    if (started && !alive && !deathSubmitted.current) {
+      deathSubmitted.current = true;
+      if (score > 0) submitScore("snake", score);
+    }
+  }, [started, alive, score]);
+
   return (
     <div className="mx-auto w-full max-w-3xl">
+      <DemoNameInput variant="dark" />
       <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border-2 border-[#26314d] bg-[#0b1020] px-4 py-3">
         <span className="font-pixel text-[10px]" style={{ color: GREEN }}>🎮 SOLO DEMO</span>
         <span className="text-xs font-bold text-zinc-200">SCORE <span style={{ color: GREEN }}>{score}</span></span>

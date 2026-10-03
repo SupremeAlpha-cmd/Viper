@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DemoNameInput } from "./DemoNameInput";
+import { submitScore } from "../../lib/leaderboard";
 
 const RED = "#ef4444";
 const GREEN = "#22c55e";
@@ -24,6 +26,7 @@ export function SquadDemo() {
   const token = useRef(0);
   const raf = useRef(0);
   const lastTs = useRef(0);
+  const sqSubmitted = useRef(false); // one leaderboard submit per run
 
   useEffect(() => {
     try {
@@ -108,6 +111,7 @@ export function SquadDemo() {
     setTime(0);
     setHolding(false);
     setPhase("green");
+    sqSubmitted.current = false;
     lastTs.current = 0;
     raf.current = requestAnimationFrame((ts) => {
       lastTs.current = ts;
@@ -155,7 +159,19 @@ export function SquadDemo() {
   const isGreen = phase === "green";
   const isRed = phase === "red";
 
+  // Submit to the daily leaderboard when the run ends (caught or finished).
+  // Metric: distance reached (m) — furthest wins; tiebreak: fastest time (ms).
+  useEffect(() => {
+    if ((phase === "dead" || phase === "finished") && !sqSubmitted.current) {
+      sqSubmitted.current = true;
+      const d = Math.floor(dist);
+      if (d > 0) submitScore("squad-game", d, Math.round(time * 1000));
+    }
+  }, [phase, dist, time]);
+
   return (
+    <>
+    <DemoNameInput variant="dark" />
     <div
       className="min-h-[80vh] rounded-3xl border-[3px] transition-colors duration-200 select-none"
       style={{
@@ -271,5 +287,6 @@ export function SquadDemo() {
         </div>
       )}
     </div>
+    </>
   );
 }

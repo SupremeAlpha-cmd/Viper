@@ -5,6 +5,8 @@ import { Board } from "../../snakes-ladders/Board";
 import { Dice } from "../../snakes-ladders/Dice";
 import { Team, TEAM_META, LADDER_MAP, SNAKE_MAP, WINNING_SQUARE } from "../../snakes-ladders/contract";
 import { Card, Cartridge, ChunkyButton, NAVY, BLUE } from "../cartoon";
+import { DemoNameInput } from "./DemoNameInput";
+import { submitScore } from "../../lib/leaderboard";
 
 const TEAMS = [Team.RED, Team.BLUE, Team.GREEN, Team.YELLOW];
 const AI_DELAY = 1300;
@@ -21,6 +23,8 @@ export function SnakesLaddersDemo() {
   const [rolling, setRolling] = useState(false);
   const stateRef = useRef({ positions, turn, winner });
   stateRef.current = { positions, turn, winner };
+  const redRolls = useRef(0); // dice rolls by you (RED) — the leaderboard metric (fewest wins)
+  const slSubmitted = useRef(false);
 
   const reset = useCallback(() => {
     setPositions([0, 0, 0, 0]);
@@ -29,11 +33,14 @@ export function SnakesLaddersDemo() {
     setWinner(null);
     setLog(["🎲 Demo race started — you're RED. Roll to begin!"]);
     setRolling(false);
+    redRolls.current = 0;
+    slSubmitted.current = false;
   }, []);
 
   const doRoll = useCallback((team: Team) => {
     const s = stateRef.current;
     if (s.winner !== null || s.turn !== team) return;
+    if (team === Team.RED) redRolls.current += 1;
     setRolling(true);
     const dice = rand(6) + 1;
     const from = s.positions[team];
@@ -76,8 +83,17 @@ export function SnakesLaddersDemo() {
 
   useEffect(() => { reset(); }, [reset]);
 
+  // Submit your roll count when you win — fewest rolls takes the day.
+  useEffect(() => {
+    if (winner === Team.RED && !slSubmitted.current) {
+      slSubmitted.current = true;
+      submitScore("snakes-ladders", redRolls.current);
+    }
+  }, [winner]);
+
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5">
+      <DemoNameInput variant="light" />
       <div
         className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] bg-white px-4 py-3"
         style={{ borderColor: NAVY, boxShadow: `4px 4px 0 ${NAVY}` }}
